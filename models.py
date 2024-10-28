@@ -226,6 +226,7 @@ class RNN_LSTM_DecoderWithAttention(nn.Module):
 
         return predictions, encoded_captions, decode_lengths, alphas, sort_ind
 
+
 class RNN_DecoderWithAttention(nn.Module):
     """
     RNN Decoder with Attention mechanism.
