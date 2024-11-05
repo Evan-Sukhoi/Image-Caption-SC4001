@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+from math import e
+from sqlite3 import adapt
 import time
 import torch.backends.cudnn as cudnn
 import torch.optim
@@ -8,6 +10,8 @@ import torchvision.transforms as transforms
 from torch import nn
 from torch.nn.utils.rnn import pack_padded_sequence
 from models import *
+from decoder import *
+from encoder import *
 from transformer import *
 from datasets import *
 from utils import *
@@ -17,7 +21,7 @@ import codecs
 import numpy as np
 
 
-def train(args, train_loader, encoder, decoder, criterion, encoder_optimizer, decoder_optimizer, epoch):
+def train(args, train_loader, encoder, decoder, criterion, encoder_optimizer, decoder_optimizer, epoch, decoder_attn=True):
     """
     Performs one epoch's training.
 
@@ -54,7 +58,10 @@ def train(args, train_loader, encoder, decoder, criterion, encoder_optimizer, de
         # imgs: [batch_size, 14, 14, 2048]
         # caps: [batch_size, 52]
         # caplens: [batch_size, 1]
-        scores, caps_sorted, decode_lengths, alphas, sort_ind = decoder(imgs, caps, caplens)
+        if decoder_attn:
+            scores, caps_sorted, decode_lengths, alphas, sort_ind = decoder(imgs, caps, caplens)
+        else:
+            scores, caps_sorted, decode_lengths, sort_ind = decoder(imgs, caps, caplens)
 
         # Since we decoded starting with <start>, the targets are all words after <start>, up to <end>
         targets = caps_sorted[:, 1:]
@@ -75,9 +82,9 @@ def train(args, train_loader, encoder, decoder, criterion, encoder_optimizer, de
         # But we also encourage the weights at a single pixel p to sum to 1 across all timesteps T.
         # This means we want the model to attend to every pixel over the course of generating the entire sequence.
         # Therefore, we want to minimize the difference between 1 and the sum of a pixel's weights across all timesteps.
-        if args.decoder_mode == "lstm":
+        if args.mode == "lstm" or args.mode == "rnn":
             loss += args.alpha_c * ((1. - alphas.sum(dim=1)) ** 2).mean()
-        elif args.decoder_mode == "transformer":
+        elif args.mode == "transformer":
             dec_alphas = alphas["dec_enc_attns"]
             alpha_trans_c = args.alpha_c / (args.n_heads * args.decoder_layers)
             for layer in range(args.decoder_layers):  # args.decoder_layers = len(dec_alphas)
@@ -164,9 +171,9 @@ def validate(args, val_loader, encoder, decoder, criterion):
             loss = criterion(scores, targets)
 
             # Add doubly stochastic attention regularization
-            if args.decoder_mode == "lstm":
+            if args.mode == "lstm" or args.mode == "rnn":
                 loss += args.alpha_c * ((1. - alphas.sum(dim=1)) ** 2).mean()
-            elif args.decoder_mode == "transformer":
+            elif args.mode == "transformer":
                 dec_alphas = alphas["dec_enc_attns"]
                 alpha_trans_c = args.alpha_c / (args.n_heads * args.decoder_layers)
                 for layer in range(args.decoder_layers):  # args.decoder_layers = len(dec_alphas)
@@ -241,7 +248,8 @@ if __name__ == '__main__':
     parser.add_argument('--decoder_dim', type=int, default=512, help='dimension of decoder RNN.')
     parser.add_argument('--n_heads', type=int, default=8, help='Multi-head attention.')
     parser.add_argument('--dropout', type=float, default=0.1, help='dropout')
-    parser.add_argument('--decoder_mode', default="transformer", help='which model does decoder use?')  # lstm or transformer
+    parser.add_argument('--mode', default="transformer", help='which model (or attention type) does decoder use?')  # lstm or transformer
+    parser.add_argument('--attention_type', default="Soft", help='Soft, Adaptive') # Soft or Adaptive
     parser.add_argument('--attention_method', default="ByPixel", help='which attention method to use?')  # ByPixel or ByChannel
     parser.add_argument('--encoder_layers', type=int, default=2, help='the number of layers of encoder in Transformer.')
     parser.add_argument('--decoder_layers', type=int, default=6, help='the number of layers of decoder in Transformer.')
@@ -269,8 +277,9 @@ if __name__ == '__main__':
                  "decoder_dim": args.decoder_dim,
                  "n_heads": args.n_heads,
                  "dropout": args.dropout,
-                 "decoder_mode": args.decoder_mode,
+                 "mode": args.mode,
                  "attention_method": args.attention_method,
+                 "attention_type": args.attention_type,
                  "encoder_layers": args.encoder_layers,
                  "decoder_layers": args.decoder_layers}
 
@@ -289,24 +298,42 @@ if __name__ == '__main__':
 
     # Initialize / load checkpoint
     if args.checkpoint is None:
-        encoder = CNN_Encoder(attention_method=args.attention_method)
+        if args.mode == "lstm" and args.attention_type == "adaptive":
+            encoder = Adaptive_Encoder(encoded_image_size=14,
+                            embed_dim=args.emb_dim,
+                            decoder_dim=args.decoder_dim)
+        else:
+            encoder = CNN_Encoder(attention_method=args.attention_method)
         encoder.fine_tune(args.fine_tune_encoder)
         encoder_optimizer = torch.optim.Adam(params=filter(lambda p: p.requires_grad, encoder.parameters()),
                                              lr=args.encoder_lr) if args.fine_tune_encoder else None
 
-        if args.decoder_mode == "rnn":
+        if args.mode == "rnn":
             decoder = RNN_DecoderWithAttention(attention_dim=args.attention_dim,
                                                 embed_dim=args.emb_dim,
                                                 decoder_dim=args.decoder_dim,
                                                 vocab_size=len(word_map),
                                                 dropout=args.dropout)
-        elif args.decoder_mode == "lstm":
-            decoder = RNN_LSTM_DecoderWithAttention(attention_dim=args.attention_dim,
+        elif args.mode == "lstm":
+            if args.attention_type == "soft":
+                decoder = RNN_LSTM_DecoderWithAttention(attention_dim=args.attention_dim,
                                                     embed_dim=args.emb_dim,
                                                     decoder_dim=args.decoder_dim,
                                                     vocab_size=len(word_map),
                                                     dropout=args.dropout)
-        elif args.decoder_mode == "transformer":
+            elif args.attention_type == "adaptive":
+                decoder = RNN_LSTM_DecoderWithAttention(attention_dim=args.attention_dim,
+                                                    embed_dim=args.emb_dim,
+                                                    decoder_dim=args.decoder_dim,
+                                                    vocab_size=len(word_map),
+                                                    dropout=args.dropout,
+                                                    attn_type="adaptive")
+        elif args.mode == "lstm-wo-attn":
+            decoder = RNN_LSTM_DecoderWithoutAttention(embed_dim=args.emb_dim,
+                                                    decoder_dim=args.decoder_dim,
+                                                    vocab_size=len(word_map))
+        
+        elif args.mode == "transformer":
             decoder = Transformer(vocab_size=len(word_map), embed_dim=args.emb_dim, encoder_layers=args.encoder_layers,
                                     decoder_layers=args.decoder_layers, dropout=args.dropout,
                                     attention_method=args.attention_method, n_heads=args.n_heads)
@@ -400,8 +427,12 @@ if __name__ == '__main__':
                 adjust_learning_rate(encoder_optimizer, 0.8)
 
         # One epoch's training
-        train(args, train_loader=train_loader, encoder=encoder, decoder=decoder, criterion=criterion,
-              encoder_optimizer=encoder_optimizer, decoder_optimizer=decoder_optimizer, epoch=epoch)
+        if args.mode == "lstm-wo-attn":
+            train(args, train_loader=train_loader, encoder=encoder, decoder=decoder, criterion=criterion,
+                encoder_optimizer=encoder_optimizer, decoder_optimizer=decoder_optimizer, epoch=epoch, decoder_attn=False)
+        else:
+            train(args, train_loader=train_loader, encoder=encoder, decoder=decoder, criterion=criterion,
+                encoder_optimizer=encoder_optimizer, decoder_optimizer=decoder_optimizer, epoch=epoch)
 
         # One epoch's validation
         metrics = validate(args, val_loader=val_loader, encoder=encoder, decoder=decoder, criterion=criterion)

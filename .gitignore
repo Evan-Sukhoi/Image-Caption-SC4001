@@ -16,6 +16,7 @@ __pycache__/
 
 # models
 /models
+*.pth.tar
 
 #logs and batch files
 *.out
