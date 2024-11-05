@@ -156,7 +156,10 @@ def validate(args, val_loader, encoder, decoder, criterion):
             # Forward prop.
             if encoder is not None:
                 imgs = encoder(imgs)
-            scores, caps_sorted, decode_lengths, alphas, sort_ind = decoder(imgs, caps, caplens)
+            if args.mode == "lstm-wo-attn":
+                scores, caps_sorted, decode_lengths, sort_ind = decoder(imgs, caps, caplens)
+            else:
+                scores, caps_sorted, decode_lengths, alphas, sort_ind = decoder(imgs, caps, caplens)
 
             # Since we decoded starting with <start>, the targets are all words after <start>, up to <end>
             targets = caps_sorted[:, 1:]
