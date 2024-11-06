@@ -4,7 +4,7 @@ from utils import create_input_files
 import argparse
 import os
 
-# create_input_files.py --max_len=22 --karpathy_json_path="./dataset/caption_dataset/dataset_flickr30k.json" --dataset="flickr30k" --image_folder="./dataset" --output_folder="./dataset/generated_data" 
+# python create_input_files.py --max_len=18 --karpathy_json_path="./dataset/caption_dataset/dataset_coco.json" --dataset="coco" --image_folder="./dataset" --output_folder="./dataset/generated_data" 
 
 
 if __name__ == '__main__':

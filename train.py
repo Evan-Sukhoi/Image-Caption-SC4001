@@ -9,7 +9,7 @@ import torch.utils.data
 import torchvision.transforms as transforms
 from torch import nn
 from torch.nn.utils.rnn import pack_padded_sequence
-from models import *
+# from models import *
 from decoder import *
 from encoder import *
 from transformer import *
@@ -156,7 +156,10 @@ def validate(args, val_loader, encoder, decoder, criterion):
             # Forward prop.
             if encoder is not None:
                 imgs = encoder(imgs)
-            scores, caps_sorted, decode_lengths, alphas, sort_ind = decoder(imgs, caps, caplens)
+            if args.mode == "lstm-wo-attn":
+                scores, caps_sorted, decode_lengths, sort_ind = decoder(imgs, caps, caplens)
+            else:
+                scores, caps_sorted, decode_lengths, alphas, sort_ind = decoder(imgs, caps, caplens)
 
             # Since we decoded starting with <start>, the targets are all words after <start>, up to <end>
             targets = caps_sorted[:, 1:]
@@ -334,9 +337,13 @@ if __name__ == '__main__':
                                                     vocab_size=len(word_map))
         
         elif args.mode == "transformer":
+            max_decoder_length = 52
+            if args.data_name.count("flickr30k") > 0:
+                max_decoder_length = 24
             decoder = Transformer(vocab_size=len(word_map), embed_dim=args.emb_dim, encoder_layers=args.encoder_layers,
                                     decoder_layers=args.decoder_layers, dropout=args.dropout,
-                                    attention_method=args.attention_method, n_heads=args.n_heads)
+                                    attention_method=args.attention_method, n_heads=args.n_heads, 
+                                    max_decode_length=max_decoder_length)
 
         decoder_optimizer = torch.optim.Adam(params=filter(lambda p: p.requires_grad, decoder.parameters()),
                                              lr=args.decoder_lr)
