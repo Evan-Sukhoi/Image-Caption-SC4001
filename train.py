@@ -252,7 +252,7 @@ if __name__ == '__main__':
     parser.add_argument('--n_heads', type=int, default=8, help='Multi-head attention.')
     parser.add_argument('--dropout', type=float, default=0.1, help='dropout')
     parser.add_argument('--mode', default="transformer", help='which model (or attention type) does decoder use?')  # lstm or transformer
-    parser.add_argument('--attention_type', default="Soft", help='Soft, Adaptive') # Soft or Adaptive
+    parser.add_argument('--attention_type', default="soft", help='Soft, Adaptive') # Soft or Adaptive
     parser.add_argument('--attention_method', default="ByPixel", help='which attention method to use?')  # ByPixel or ByChannel
     parser.add_argument('--encoder_layers', type=int, default=2, help='the number of layers of encoder in Transformer.')
     parser.add_argument('--decoder_layers', type=int, default=6, help='the number of layers of decoder in Transformer.')
@@ -347,6 +347,8 @@ if __name__ == '__main__':
             max_decoder_length = 52
             if args.data_name.count("flickr30k") > 0:
                 max_decoder_length = 24
+            elif args.data_name.count("coco") > 0:
+                max_decoder_length = 20
             decoder = Transformer(vocab_size=len(word_map), embed_dim=args.emb_dim, encoder_layers=args.encoder_layers,
                                     decoder_layers=args.decoder_layers, dropout=args.dropout,
                                     attention_method=args.attention_method, n_heads=args.n_heads, 

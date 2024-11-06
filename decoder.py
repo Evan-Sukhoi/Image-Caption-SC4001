@@ -7,7 +7,6 @@ import math
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # cuda:0
 
-
 class Attention(nn.Module):
     """
     Attention Network.
@@ -53,28 +52,10 @@ class Attention(nn.Module):
         if self.mode == "aoa":
             # Apply AoA mechanism to combine attention and context
             aoa_input = torch.cat([attention_weighted_encoding, decoder_hidden], dim=1)
-            output = self.aoa_layer(aoa_input)
+            attention_weighted_encoding = self.aoa_layer(aoa_input)
 
-        return output, alpha
+        return attention_weighted_encoding, alpha
 
-
-    def forward(self, images):
-        """
-        Forward propagation.
-
-        :param images: images, a tensor of dimensions (batch_size, 3, image_size, image_size)
-        :return: encoded images
-        """
-        out = self.resnet(images)  # (batch_size, 2048, image_size/32, image_size/32)
-        out = self.adaptive_pool(out)  # (batch_size, 2048, encoded_image_size, encoded_image_size)
-
-        a_g = self.avgpool(out)  # (batch_size, 2048, 1, 1)
-        a_g = a_g.view(a_g.size(0), -1)   # (batch_size, 2048)
-
-        out = out.permute(0, 2, 3, 1)  # (batch_size, encoded_image_size, encoded_image_size, 2048)
-        v_g = F.relu(self.affine_embed(a_g))
-
-        return out, v_g
 
 class Adaptive_Attention(Attention):
     """

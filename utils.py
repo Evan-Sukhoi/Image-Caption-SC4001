@@ -252,7 +252,7 @@ def save_checkpoint(train_name, data_name, epoch, epochs_since_improvement, enco
     # If this checkpoint is the best so far, store a copy so it doesn't get overwritten by a worse checkpoint
     if is_best:
         cur_time = time.strftime("%m-%d-%H:%M:%S", time.localtime())
-        torch.save(state, 'BEST_' +  + cur_time + '_' + filename)
+        torch.save(state, 'BEST_' + cur_time + '_' + filename)
 
 
 class AverageMeter(object):
