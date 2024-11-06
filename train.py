@@ -400,7 +400,9 @@ if __name__ == '__main__':
             encoder.fine_tune(args.fine_tune_encoder)
             encoder_optimizer = torch.optim.Adam(params=filter(lambda p: p.requires_grad, encoder.parameters()),
                                                  lr=args.encoder_lr)
-
+    if args.fine_tune_encoder:
+        train_name += "_finetuneEnc"
+    
     # Move to GPU, if available
     decoder = decoder.to(device)
     encoder = encoder.to(device)
