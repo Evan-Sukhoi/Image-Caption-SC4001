@@ -299,6 +299,8 @@ if __name__ == '__main__':
     with open(word_map_file, 'r') as j:
         word_map = json.load(j)
 
+    train_name = ""
+    
     # Initialize / load checkpoint
     if args.checkpoint is None:
         if args.mode == "lstm" and args.attention_type == "adaptive":
@@ -312,6 +314,7 @@ if __name__ == '__main__':
                                              lr=args.encoder_lr) if args.fine_tune_encoder else None
 
         if args.mode == "rnn":
+            train_name = "rnn"
             decoder = RNN_DecoderWithAttention(attention_dim=args.attention_dim,
                                                 embed_dim=args.emb_dim,
                                                 decoder_dim=args.decoder_dim,
@@ -319,12 +322,14 @@ if __name__ == '__main__':
                                                 dropout=args.dropout)
         elif args.mode == "lstm":
             if args.attention_type == "soft":
+                train_name = "lstm-soft"
                 decoder = RNN_LSTM_DecoderWithAttention(attention_dim=args.attention_dim,
                                                     embed_dim=args.emb_dim,
                                                     decoder_dim=args.decoder_dim,
                                                     vocab_size=len(word_map),
                                                     dropout=args.dropout)
             elif args.attention_type == "adaptive":
+                train_name = "lstm-adaptive"
                 decoder = RNN_LSTM_DecoderWithAttention(attention_dim=args.attention_dim,
                                                     embed_dim=args.emb_dim,
                                                     decoder_dim=args.decoder_dim,
@@ -332,11 +337,13 @@ if __name__ == '__main__':
                                                     dropout=args.dropout,
                                                     attn_type="adaptive")
         elif args.mode == "lstm-wo-attn":
+            train_name = "lstm-wo-attn"
             decoder = RNN_LSTM_DecoderWithoutAttention(embed_dim=args.emb_dim,
                                                     decoder_dim=args.decoder_dim,
                                                     vocab_size=len(word_map))
         
         elif args.mode == "transformer":
+            train_name = "transformer"
             max_decoder_length = 52
             if args.data_name.count("flickr30k") > 0:
                 max_decoder_length = 24
@@ -455,5 +462,5 @@ if __name__ == '__main__':
             epochs_since_improvement = 0
 
         # Save checkpoint
-        save_checkpoint(args.data_name, epoch, epochs_since_improvement, encoder, decoder, encoder_optimizer,
+        save_checkpoint(train_name, args.data_name, epoch, epochs_since_improvement, encoder, decoder, encoder_optimizer,
                         decoder_optimizer, metrics, is_best, final_args)

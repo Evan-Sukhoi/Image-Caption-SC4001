@@ -3,6 +3,7 @@ import numpy as np
 import h5py
 import json
 import torch
+import time
 # from scipy.misc import imread, imresize
 from tqdm import tqdm
 from collections import Counter
@@ -223,7 +224,7 @@ def clip_gradient(optimizer, grad_clip):
                 param.grad.data.clamp_(-grad_clip, grad_clip)
 
 
-def save_checkpoint(data_name, epoch, epochs_since_improvement, encoder, decoder, encoder_optimizer, decoder_optimizer,
+def save_checkpoint(train_name, data_name, epoch, epochs_since_improvement, encoder, decoder, encoder_optimizer, decoder_optimizer,
                     metrics, is_best, final_args):
     """
     Saves model checkpoint.
@@ -246,11 +247,12 @@ def save_checkpoint(data_name, epoch, epochs_since_improvement, encoder, decoder
              'encoder_optimizer': encoder_optimizer,
              'decoder_optimizer': decoder_optimizer,
              'final_args': final_args}
-    filename = 'checkpoint_' + data_name + '.pth.tar'
+    filename = 'checkpoint_' + train_name + '_' + data_name + '_' + '.pth.tar'
     torch.save(state, filename)
     # If this checkpoint is the best so far, store a copy so it doesn't get overwritten by a worse checkpoint
     if is_best:
-        torch.save(state, 'BEST_' + filename)
+        cur_time = time.strftime("%m-%d-%H:%M:%S", time.localtime())
+        torch.save(state, 'BEST_' +  + cur_time + '_' + filename)
 
 
 class AverageMeter(object):
