@@ -12,8 +12,14 @@ from tqdm import tqdm
 import argparse
 # import transformer, models
 
+# python eval.py --data_folder="./dataset/generated_data" --data_name=flickr30k_5_cap_per_img_5_min_word_freq --decoder_mode="lstm" --beam_size=3 --checkpoint="./BEST_checkpoint_flickr30k_5_cap_per_img_5_min_word_freq.pth.tar"
 
-def evaluate_lstm(args):
+# python eval.py --data_folder="./dataset/generated_data" --data_name=flickr8k_5_cap_per_img_5_min_word_freq --decoder_mode="lstm" --beam_size=3 --checkpoint="./models/BEST_checkpoint_flickr8k_5_cap_per_img_5_min_word_freq.pth.tar"
+# python eval.py --data_folder="./dataset/generated_data" --data_name=flickr8k_5_cap_per_img_5_min_word_freq --decoder_mode="lstm-wo-attn" --beam_size=3 --checkpoint="./checkpoint_flickr8k_5_cap_per_img_5_min_word_freq.pth.tar"
+# python eval.py --data_folder="./dataset/generated_data" --data_name=coco_5_cap_per_img_5_min_word_freq --decoder_mode="transformer" --beam_size=3 --checkpoint="./models/BEST_checkpoint_coco_5_cap_per_img_5_min_word_freq.pth.tar"
+
+
+def evaluate_lstm(args, use_attention=True):
     """
     Evaluation for decoder_mode: lstm
 
@@ -38,10 +44,15 @@ def evaluate_lstm(args):
         for i, (image, caps, caplens, allcaps) in enumerate(tqdm(loader, desc="EVALUATING AT BEAM SIZE " + str(beam_size))):
             k = beam_size
             # Move to GPU device, if available
-            image = image.to(device)  # [1, 3, 256, 256]
+            try:
+                if decoder.attn_type == "adaptive":
+                    encoder_out, v_g = encoder(image)  # (1, enc_image_size, enc_image_size, encoder_dim)
+                else:
+                    encoder_out = encoder(image)  #  [1, 3, 256, 256](1, enc_image_size, enc_image_size, encoder_dim) 
+            except AttributeError:
+                encoder_out = encoder(image)  # (1, enc_image_size, enc_image_size, encoder_dim)
 
-            # Encode
-            encoder_out = encoder(image)  # [1, enc_image_size=14, enc_image_size=14, encoder_dim=2048]
+            print(type(encoder_out))
             enc_image_size = encoder_out.size(1)
             encoder_dim = encoder_out.size(-1)
             # # Flatten encoding
@@ -66,11 +77,24 @@ def evaluate_lstm(args):
             # s is a number less than or equal to k, because sequences are removed from this process once they hit <end>
             while True:
                 embeddings = decoder.embedding(k_prev_words).squeeze(1)  # [s, embed_dim]
-                awe, _ = decoder.attention(encoder_out, h)  # attention_weighted_encoding: [s, encoder_dim], [s, num_pixels]
-                gate = decoder.sigmoid(decoder.f_beta(h))  # gating scalar, (s, encoder_dim)
-                awe = gate * awe
-                h, c = decoder.lstm(torch.cat([embeddings, awe], dim=1), (h, c))  # [s, decoder_dim]
-                scores = decoder.fc(h)  # [s, vocab_size]
+                
+                if decoder.attn_type == "adaptive":
+                    g_t = decoder.sigmoid(decoder.affine_embed(embeddings) + decoder.affine_decoder(h))
+                    s_t = g_t * torch.tanh(c)
+
+                    h, c = decoder.decode_step_adaptive(torch.cat([embeddings, v_g.expand_as(embeddings)], dim=1), (h, c))  # (batch_size_t, decoder_dim)
+                    attention_weighted_encoding, alpha = decoder.adaptive_attention(encoder_out, h, s_t)
+                    scores = decoder.fc(h) + decoder.fc_encoder(attention_weighted_encoding)
+                else:
+                    if use_attention:
+                        awe, _ = decoder.attention(encoder_out, h)  # attention_weighted_encoding: [s, encoder_dim]
+                        gate = decoder.sigmoid(decoder.f_beta(h))  # gating scalar, (s, encoder_dim)
+                        awe = gate * awe
+                    else:
+                        awe = encoder_out.mean(dim=1) # no attention, use mean of encoder_out
+                    h, c = decoder.lstm(torch.cat([embeddings, awe], dim=1), (h, c))  # [s, decoder_dim]
+                    scores = decoder.fc(h)  # [s, vocab_size]
+                    
                 scores = F.log_softmax(scores, dim=1)
                 # top_k_scores: [s, 1]
                 scores = top_k_scores.expand_as(scores) + scores  # [s, vocab_size]
@@ -107,7 +131,7 @@ def evaluate_lstm(args):
                 top_k_scores = top_k_scores[incomplete_inds].unsqueeze(1)
                 k_prev_words = next_word_inds[incomplete_inds].unsqueeze(1)
                 # Break if things have been going on too long
-                if step > 50:
+                if step > args.max_encode_length - 2:
                     break
                 step += 1
 
@@ -165,7 +189,7 @@ def evaluate_transformer(args):
             encoder_out = encoder_out.expand(k, enc_image_size, enc_image_size, encoder_dim)  # [k, enc_image_size, enc_image_size, encoder_dim]
             # Tensor to store top k previous words at each step; now they're just <start>
             # Important: [1, 52] (eg: [[<start> <start> <start> ...]]) will not work, since it contains the position encoding
-            k_prev_words = torch.LongTensor([[word_map['<start>']]*52] * k).to(device)  # (k, 52)
+            k_prev_words = torch.LongTensor([[word_map['<start>']]*args.max_encode_length] * k).to(device)  # (k, 52)
             # Tensor to store top k sequences; now they're just <start>
             seqs = torch.LongTensor([[word_map['<start>']]] * k).to(device)  # (k, 1)
             # Tensor to store top k sequences' scores; now they're just 0
@@ -180,7 +204,7 @@ def evaluate_transformer(args):
             while True:
                 # print("steps {} k_prev_words: {}".format(step, k_prev_words))
                 # cap_len = torch.LongTensor([52]).repeat(k, 1).to(device) may cause different sorted results on GPU/CPU in transformer.py
-                cap_len = torch.LongTensor([52]).repeat(k, 1)  # [s, 1]
+                cap_len = torch.LongTensor([args.max_encode_length]).repeat(k, 1)  # [s, 1]
                 scores, _, _, _, _ = decoder(encoder_out, k_prev_words, cap_len)
                 scores = scores[:, step-1, :].squeeze(1)  # [s, 1, vocab_size] -> [s, vocab_size]
                 scores = F.log_softmax(scores, dim=1)
@@ -221,7 +245,7 @@ def evaluate_transformer(args):
                 k_prev_words[:, :step+1] = seqs  # [s, 52]
                 # k_prev_words[:, step] = next_word_inds[incomplete_inds]  # [s, 52]
                 # Break if things have been going on too long
-                if step > 50:
+                if step > args.max_encode_length - 2:
                     break
                 step += 1
 
@@ -269,6 +293,7 @@ if __name__ == '__main__':
     parser.add_argument('--beam_size', type=int, default=3, help='beam_size.')
     parser.add_argument('--checkpoint', default="./models/BEST_checkpoint_coco_5_cap_per_img_5_min_word_freq.pth.tar",
                         help='model checkpoint.')
+    parser.add_argument('--max_encode_length', type=int, default=52, help='max_encode_length')
     args = parser.parse_args()
 
     word_map_file = os.path.join(args.data_folder, 'WORDMAP_' + args.data_name + '.json')
@@ -300,6 +325,8 @@ if __name__ == '__main__':
                                      std=[0.229, 0.224, 0.225])
     if args.decoder_mode == "lstm":
         metrics = evaluate_lstm(args)
+    elif args.decoder_mode == "lstm-wo-attn":
+        metrics = evaluate_lstm(args, use_attention=False)
     elif args.decoder_mode == "transformer":
         metrics = evaluate_transformer(args)
 

@@ -43,12 +43,12 @@ class Multi_Head_Attention(nn.Module):
                 Q = K = V: [batch_size, num_pixels=196, encoder_dim=2048]
                 attn_mask: [batch_size, len_q=196, len_k=196]
         In self-decoder attention:
-                Q = K = V: [batch_size, max_len=52, embed_dim=512]
-                attn_mask: [batch_size, len_q=52, len_k=52]
+                Q = K = V: [batch_size, max_len=max_decode_length, embed_dim=512]
+                attn_mask: [batch_size, len_q=max_decode_length, len_k=max_decode_length]
         encoder-decoder attention:
-                Q: [batch_size, 52, 512] from decoder
+                Q: [batch_size, max_decode_length, 512] from decoder
                 K, V: [batch_size, 196, 2048] from encoder
-                attn_mask: [batch_size, len_q=52, len_k=196]
+                attn_mask: [batch_size, len_q=max_decode_length, len_k=196]
         return _, attn: [batch_size, n_heads, len_q, len_k]
         """
         residual, batch_size = Q, Q.size(0)
@@ -83,7 +83,7 @@ class PoswiseFeedForwardNet(nn.Module):
     def forward(self, inputs):
         """
         encoder: inputs: [batch_size, len_q=196, embed_dim=2048]
-        decoder: inputs: [batch_size, max_len=52, embed_dim=512]
+        decoder: inputs: [batch_size, max_len=max_decode_length, embed_dim=512]
         """
         residual = inputs
         output = nn.ReLU()(self.conv1(inputs.transpose(1, 2)))
@@ -105,10 +105,10 @@ class DecoderLayer(nn.Module):
 
     def forward(self, dec_inputs, enc_outputs, dec_self_attn_mask, dec_enc_attn_mask):
         """
-        :param dec_inputs: [batch_size, max_len=52, embed_dim=512]
+        :param dec_inputs: [batch_size, max_len=max_decode_length, embed_dim=512]
         :param enc_outputs: [batch_size, num_pixels=196, 2048]
-        :param dec_self_attn_mask: [batch_size, 52, 52]
-        :param dec_enc_attn_mask: [batch_size, 52, 196]
+        :param dec_self_attn_mask: [batch_size, max_decode_length, max_decode_length]
+        :param dec_enc_attn_mask: [batch_size, max_decode_length, 196]
         """
         dec_outputs, dec_self_attn = self.dec_self_attn(dec_inputs, dec_inputs, dec_inputs, dec_self_attn_mask)
         dec_outputs, dec_enc_attn = self.dec_enc_attn(dec_outputs, enc_outputs, enc_outputs, dec_enc_attn_mask)
@@ -117,9 +117,10 @@ class DecoderLayer(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, n_layers, vocab_size, embed_dim, dropout, attention_method, n_heads):
+    def __init__(self, n_layers, vocab_size, embed_dim, dropout, attention_method, n_heads, max_decode_length=52):
         super(Decoder, self).__init__()
         self.vocab_size = vocab_size
+        self.max_decode_length = max_decode_length
         self.tgt_emb = nn.Embedding(vocab_size, embed_dim, padding_idx=0)
         self.pos_emb = nn.Embedding.from_pretrained(self.get_position_embedding_table(embed_dim), freeze=True)
         self.dropout = nn.Dropout(p=dropout)
@@ -133,7 +134,7 @@ class Decoder(nn.Module):
         def get_posi_angle_vec(position):
             return [cal_angle(position, hid_idx) for hid_idx in range(embed_dim)]
 
-        embedding_table = np.array([get_posi_angle_vec(pos_i) for pos_i in range(52)])
+        embedding_table = np.array([get_posi_angle_vec(pos_i) for pos_i in range(self.max_decode_length)])
         embedding_table[:, 0::2] = np.sin(embedding_table[:, 0::2])  # dim 2i
         embedding_table[:, 1::2] = np.cos(embedding_table[:, 1::2])  # dim 2i+1
         return torch.FloatTensor(embedding_table).to(device)
@@ -155,7 +156,7 @@ class Decoder(nn.Module):
     def forward(self, encoder_out, encoded_captions, caption_lengths):
         """
         :param encoder_out: [batch_size, num_pixels=196, 2048]
-        :param encoded_captions: [batch_size, 52]
+        :param encoded_captions: [batch_size, max_decode_length]
         :param caption_lengths: [batch_size, 1]
         """
         batch_size = encoder_out.size(0)
@@ -167,9 +168,9 @@ class Decoder(nn.Module):
         # So, decoding lengths are actual lengths - 1
         decode_lengths = (caption_lengths - 1).tolist()
 
-        # dec_outputs: [batch_size, max_len=52, embed_dim=512]
-        # dec_self_attn_pad_mask: [batch_size, len_q=52, len_k=52], 1 if id=0(<pad>)
-        # dec_self_attn_subsequent_mask: [batch_size, 52, 52], Upper triangle of an array with 1.
+        # dec_outputs: [batch_size, max_len=max_decode_length, embed_dim=512]
+        # dec_self_attn_pad_mask: [batch_size, len_q=max_decode_length, len_k=max_decode_length], 1 if id=0(<pad>)
+        # dec_self_attn_subsequent_mask: [batch_size, max_decode_length, max_decode_length], Upper triangle of an array with 1.
         # dec_self_attn_mask for self-decoder attention, the position whose val > 0 will be masked.
         # dec_enc_attn_mask for encoder-decoder attention.
         # e.g. 9488, 23, 53, 74, 0, 0  |  dec_self_attn_mask:
@@ -179,15 +180,15 @@ class Decoder(nn.Module):
         # 0 0 0 0 2 2
         # 0 0 0 0 1 2
         # 0 0 0 0 1 1
-        dec_outputs = self.tgt_emb(encoded_captions) + self.pos_emb(torch.LongTensor([list(range(52))]*batch_size).to(device))
+        dec_outputs = self.tgt_emb(encoded_captions) + self.pos_emb(torch.LongTensor([list(range(self.max_decode_length))]*batch_size).to(device))
         dec_outputs = self.dropout(dec_outputs)
         dec_self_attn_pad_mask = self.get_attn_pad_mask(encoded_captions, encoded_captions)
         dec_self_attn_subsequent_mask = self.get_attn_subsequent_mask(encoded_captions)
         dec_self_attn_mask = torch.gt((dec_self_attn_pad_mask + dec_self_attn_subsequent_mask), 0)
         if self.attention_method == "ByPixel":
-            dec_enc_attn_mask = (torch.tensor(np.zeros((batch_size, 52, 196))).to(device) == torch.tensor(np.ones((batch_size, 52, 196))).to(device))
+            dec_enc_attn_mask = (torch.tensor(np.zeros((batch_size, self.max_decode_length, 196))).to(device) == torch.tensor(np.ones((batch_size, self.max_decode_length, 196))).to(device))
         elif self.attention_method == "ByChannel":
-            dec_enc_attn_mask = (torch.tensor(np.zeros((batch_size, 52, channel_number))).to(device) == torch.tensor(np.ones((batch_size, 52, channel_number))).to(device))
+            dec_enc_attn_mask = (torch.tensor(np.zeros((batch_size, self.max_decode_length, channel_number))).to(device) == torch.tensor(np.ones((batch_size, self.max_decode_length, channel_number))).to(device))
 
         dec_self_attns, dec_enc_attns = [], []
         for layer in self.layers:
@@ -271,12 +272,13 @@ class Transformer(nn.Module):
     In addition, apply dropout to the sums of the embeddings and the positional encodings in both the encoder
     and decoder stacks." (Now, we dont't apply dropout to the encoder embeddings)
     """
-    def __init__(self, vocab_size, embed_dim, encoder_layers, decoder_layers, dropout=0.1, attention_method="ByPixel", n_heads=8):
+    def __init__(self, vocab_size, embed_dim, encoder_layers, decoder_layers, dropout=0.1, attention_method="ByPixel", n_heads=8, max_decode_length=52):
         super(Transformer, self).__init__()
         self.encoder = Encoder(encoder_layers, dropout, attention_method, n_heads)
-        self.decoder = Decoder(decoder_layers, vocab_size, embed_dim, dropout, attention_method, n_heads)
+        self.decoder = Decoder(decoder_layers, vocab_size, embed_dim, dropout, attention_method, n_heads, max_decode_length)
         self.embedding = self.decoder.tgt_emb
         self.attention_method = attention_method
+        self.max_decode_length = max_decode_length
 
     def load_pretrained_embeddings(self, embeddings):
         self.embedding.weight = nn.Parameter(embeddings)
@@ -288,7 +290,7 @@ class Transformer(nn.Module):
     def forward(self, enc_inputs, encoded_captions, caption_lengths):
         """
         preprocess: enc_inputs: [batch_size, 14, 14, 2048]/[batch_size, 196, 2048] -> [batch_size, 196, 2048]
-        encoded_captions: [batch_size, 52]
+        encoded_captions: [batch_size, max_decode_length]
         caption_lengths: [batch_size, 1], not used
         The encoder or decoder is composed of a stack of n_layers=6 identical layers.
         One layer in encoder: Multi-head Attention(self-encoder attention) with Norm & Residual
