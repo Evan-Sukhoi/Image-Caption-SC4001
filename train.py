@@ -9,7 +9,7 @@ import torch.utils.data
 import torchvision.transforms as transforms
 from torch import nn
 from torch.nn.utils.rnn import pack_padded_sequence
-from models import *
+# from models import *
 from decoder import *
 from encoder import *
 from transformer import *
@@ -337,9 +337,13 @@ if __name__ == '__main__':
                                                     vocab_size=len(word_map))
         
         elif args.mode == "transformer":
+            max_decoder_length = 52
+            if args.data_name.count("flickr30k") > 0:
+                max_decoder_length = 24
             decoder = Transformer(vocab_size=len(word_map), embed_dim=args.emb_dim, encoder_layers=args.encoder_layers,
                                     decoder_layers=args.decoder_layers, dropout=args.dropout,
-                                    attention_method=args.attention_method, n_heads=args.n_heads)
+                                    attention_method=args.attention_method, n_heads=args.n_heads, 
+                                    max_decode_length=max_decoder_length)
 
         decoder_optimizer = torch.optim.Adam(params=filter(lambda p: p.requires_grad, decoder.parameters()),
                                              lr=args.decoder_lr)
