@@ -104,7 +104,7 @@ class RNN_LSTM_DecoderWithAttention(nn.Module):
     Decoder.
     """
 
-    def __init__(self, attention_dim, embed_dim, decoder_dim, vocab_size, encoder_dim=2048, dropout=0.5, visual_flat=196, attn_type=None):
+    def __init__(self, attention_dim, embed_dim, decoder_dim, vocab_size, encoder_dim=2048, dropout=0.5, visual_flat=196, attn_type="soft"):
         """
         :param attention_dim: size of attention network
         :param embed_dim: embedding size
@@ -264,12 +264,12 @@ class RNN_LSTM_DecoderWithAttention(nn.Module):
         return predictions, encoded_captions, decode_lengths, alphas, sort_ind
 
 
-class RNN_DecoderWithAttention(nn.Module):
+class RNN_Decoder(nn.Module):
     """
     RNN Decoder with Attention mechanism.
     """
 
-    def __init__(self, attention_dim, embed_dim, decoder_dim, vocab_size, encoder_dim=2048, dropout=0.5):
+    def __init__(self, embed_dim, decoder_dim, vocab_size, attention_dim=512, encoder_dim=2048, dropout=0.5, attn_type="soft"):
         """
         :param attention_dim: Attention network size
         :param embed_dim: Embedding size
@@ -278,7 +278,7 @@ class RNN_DecoderWithAttention(nn.Module):
         :param encoder_dim: Feature size of encoded images
         :param dropout: Dropout probability
         """
-        super(RNN_DecoderWithAttention, self).__init__()
+        super(RNN_Decoder, self).__init__()
 
         self.encoder_dim = encoder_dim
         self.attention_dim = attention_dim
@@ -371,23 +371,29 @@ class RNN_DecoderWithAttention(nn.Module):
         for t in range(max(decode_lengths)):
             batch_size_t = sum([l > t for l in decode_lengths])
             
-            # Apply attention
-            attention_weighted_encoding, alpha = self.attention(encoder_out[:batch_size_t], h[:batch_size_t])
-            gate = self.sigmoid(self.f_beta(h[:batch_size_t]))  # gating scalar
-            attention_weighted_encoding = gate * attention_weighted_encoding
+            if self.attn_type == "none":
+                # Attention-less approach: use mean of encoder outputs
+                attention_weighted_encoding = encoder_out[:batch_size_t].mean(dim=1)
+            else:
+                # Apply attention
+                attention_weighted_encoding, alpha = self.attention(encoder_out[:batch_size_t], h[:batch_size_t])
+                gate = self.sigmoid(self.f_beta(h[:batch_size_t]))  # gating scalar
+                attention_weighted_encoding = gate * attention_weighted_encoding
+                alphas[:batch_size_t, t, :] = alpha
 
             # RNN step
             h = self.rnn(
                 torch.cat([embeddings[:batch_size_t, t, :], attention_weighted_encoding], dim=1),
                 h[:batch_size_t]
             )
-
             # Output layer (predict next word)
             preds = self.fc(self.dropout(h))  # [batch_size_t, vocab_size]
             predictions[:batch_size_t, t, :] = preds
-            alphas[:batch_size_t, t, :] = alpha
+        if self.attn_type == "none":
+            return predictions, encoded_captions, decode_lengths, sort_ind
+        else:
+            return predictions, encoded_captions, decode_lengths, alphas, sort_ind
 
-        return predictions, encoded_captions, decode_lengths, alphas, sort_ind
 
 
 import torch

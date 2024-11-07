@@ -314,12 +314,20 @@ if __name__ == '__main__':
                                              lr=args.encoder_lr) if args.fine_tune_encoder else None
 
         if args.mode == "rnn":
-            train_name = "rnn"
-            decoder = RNN_DecoderWithAttention(attention_dim=args.attention_dim,
-                                                embed_dim=args.emb_dim,
-                                                decoder_dim=args.decoder_dim,
-                                                vocab_size=len(word_map),
-                                                dropout=args.dropout)
+            if args.attention_type == "soft":
+                train_name = "rnn-soft"
+                decoder = RNN_Decoder(attention_dim=args.attention_dim,
+                                    embed_dim=args.emb_dim,
+                                    decoder_dim=args.decoder_dim,
+                                    vocab_size=len(word_map),
+                                    dropout=args.dropout,
+                                    attn_type="soft")
+            elif args.attention_type == "none":
+                train_name = "rnn-wo-attn"
+                decoder = RNN_Decoder(embed_dim=args.emb_dim,
+                                    decoder_dim=args.decoder_dim,
+                                    vocab_size=len(word_map),
+                                    attn_type="none")   
         elif args.mode == "lstm":
             if args.attention_type == "soft":
                 train_name = "lstm-soft"
@@ -445,7 +453,7 @@ if __name__ == '__main__':
                 adjust_learning_rate(encoder_optimizer, 0.8)
 
         # One epoch's training
-        if args.mode == "lstm-wo-attn":
+        if args.mode == "lstm-wo-attn" or args.atenion_type == "none":
             train(args, train_loader=train_loader, encoder=encoder, decoder=decoder, criterion=criterion,
                 encoder_optimizer=encoder_optimizer, decoder_optimizer=decoder_optimizer, epoch=epoch, decoder_attn=False)
         else:
