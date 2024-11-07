@@ -453,7 +453,7 @@ if __name__ == '__main__':
                 adjust_learning_rate(encoder_optimizer, 0.8)
 
         # One epoch's training
-        if args.mode == "lstm-wo-attn" or args.atenion_type == "none":
+        if args.mode == "lstm-wo-attn" or args.attention_type == "none":
             train(args, train_loader=train_loader, encoder=encoder, decoder=decoder, criterion=criterion,
                 encoder_optimizer=encoder_optimizer, decoder_optimizer=decoder_optimizer, epoch=epoch, decoder_attn=False)
         else:
