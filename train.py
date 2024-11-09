@@ -309,11 +309,16 @@ if __name__ == '__main__':
             encoder = Adaptive_Encoder(encoded_image_size=14,
                             embed_dim=args.emb_dim,
                             decoder_dim=args.decoder_dim)
+            # redefine Adam
+            encoder_optimizer = torch.optim.Adam(params=filter(lambda p: p.requires_grad, encoder.parameters()),
+                                             lr=1e-5,
+                                             betas=(0.8,0.999),
+                                             weight_decay=1e-5) if args.fine_tune_encoder else None
         else:
             encoder = CNN_Encoder(attention_method=args.attention_method)
-        encoder.fine_tune(args.fine_tune_encoder)
-        encoder_optimizer = torch.optim.Adam(params=filter(lambda p: p.requires_grad, encoder.parameters()),
+            encoder_optimizer = torch.optim.Adam(params=filter(lambda p: p.requires_grad, encoder.parameters()),
                                              lr=args.encoder_lr) if args.fine_tune_encoder else None
+        encoder.fine_tune(args.fine_tune_encoder)
 
         if args.mode == "rnn":
             if args.attention_type == "soft":
@@ -363,9 +368,15 @@ if __name__ == '__main__':
                                     decoder_layers=args.decoder_layers, dropout=args.dropout,
                                     attention_method=args.attention_method, n_heads=args.n_heads, 
                                     max_decode_length=max_decoder_length)
-
-        decoder_optimizer = torch.optim.Adam(params=filter(lambda p: p.requires_grad, decoder.parameters()),
-                                             lr=args.decoder_lr)
+        if args.attention_type == "adaptive":
+            decoder_optimizer = torch.optim.Adam(
+                        params=filter(lambda p: p.requires_grad, encoder.parameters()),
+                        lr=5e-4,
+                        betas=(0.8,0.999),
+                        weight_decay=1e-5)
+        else:
+            decoder_optimizer = torch.optim.Adam(params=filter(lambda p: p.requires_grad, decoder.parameters()),
+                                                lr=args.decoder_lr)
 
         # load pre-trained word embedding
         if args.embedding_path is not None:
