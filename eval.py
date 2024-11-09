@@ -42,18 +42,19 @@ def evaluate_lstm(args, use_attention=True):
 
     with torch.no_grad():
         for i, (image, caps, caplens, allcaps) in enumerate(tqdm(loader, desc="EVALUATING AT BEAM SIZE " + str(beam_size))):
+            image = image.to(device)
             k = beam_size
             # Move to GPU device, if available
             try:
                 if decoder.attn_type == "adaptive":
                     encoder_out, v_g = encoder(image)  # (1, enc_image_size, enc_image_size, encoder_dim)
+                    print(type(encoder_out))
                 else:
                     encoder_out = encoder(image)  #  [1, 3, 256, 256](1, enc_image_size, enc_image_size, encoder_dim) 
-            except AttributeError:
+            except:
                 encoder_out = encoder(image)  # (1, enc_image_size, enc_image_size, encoder_dim)
 
-            print(type(encoder_out))
-            enc_image_size = encoder_out.size(1)
+            # enc_image_size = encoder_out.size(1)
             encoder_dim = encoder_out.size(-1)
             # # Flatten encoding
             encoder_out = encoder_out.view(1, -1, encoder_dim)  # [1, num_pixels=196, encoder_dim=2048]
@@ -78,7 +79,7 @@ def evaluate_lstm(args, use_attention=True):
             while True:
                 embeddings = decoder.embedding(k_prev_words).squeeze(1)  # [s, embed_dim]
                 
-                if decoder.attn_type == "adaptive":
+                if hasattr(decoder, 'attn_type') and decoder.attn_type == "adaptive":
                     g_t = decoder.sigmoid(decoder.affine_embed(embeddings) + decoder.affine_decoder(h))
                     s_t = g_t * torch.tanh(c)
 
@@ -137,17 +138,29 @@ def evaluate_lstm(args, use_attention=True):
 
             # choose the caption which has the best_score.
             assert Caption_End
-            indices = complete_seqs_scores.index(max(complete_seqs_scores))
-            seq = complete_seqs[indices]
-            # References
-            img_caps = allcaps[0].tolist()
-            img_captions = list(
-                map(lambda c: [w for w in c if w not in {word_map['<start>'], word_map['<end>'], word_map['<pad>']}],
-                    img_caps))  # remove <start> and pads
-            references.append(img_captions)
-            # Hypotheses
-            hypotheses.append([w for w in seq if w not in {word_map['<start>'], word_map['<end>'], word_map['<pad>']}])
-            assert len(references) == len(hypotheses)
+            if len(complete_seqs_scores) == 0:
+                # If there are no complete sequences, use the top_k_words as the final captions
+                indices = top_k_scores.argmax().item()
+                seq = seqs[indices].tolist()
+
+                img_caps = allcaps[0].tolist()
+                img_captions = list(
+                    map(lambda c: [w for w in c if w not in {word_map['<start>'], word_map['<end>'], word_map['<pad>']}],
+                        img_caps))  # remove <start> and pads
+                references.append(img_captions)
+                hypotheses.append([w for w in seq if w not in {word_map['<start>'], word_map['<end>'], word_map['<pad>']}])
+            else:
+                indices = complete_seqs_scores.index(max(complete_seqs_scores))
+                seq = complete_seqs[indices]
+                # References
+                img_caps = allcaps[0].tolist()
+                img_captions = list(
+                    map(lambda c: [w for w in c if w not in {word_map['<start>'], word_map['<end>'], word_map['<pad>']}],
+                        img_caps))  # remove <start> and pads
+                references.append(img_captions)
+                # Hypotheses
+                hypotheses.append([w for w in seq if w not in {word_map['<start>'], word_map['<end>'], word_map['<pad>']}])
+                assert len(references) == len(hypotheses)
 
     # Calculate BLEU1~4, METEOR, ROUGE_L, CIDEr scores
     metrics = get_eval_score(references, hypotheses)

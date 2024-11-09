@@ -272,6 +272,7 @@ if __name__ == '__main__':
     parser.add_argument('--fine_tune_embedding', type=bool, default=False, help='whether fine-tune word embeddings or not')
     parser.add_argument('--checkpoint', default=None, help='path to checkpoint, None if none.')
     parser.add_argument('--embedding_path', default=None, help='path to pre-trained word Embedding.')
+    parser.add_argument('--message', default='', help='message to add to filename.')
     args = parser.parse_args()
 
     # load checkpoint, these parameters can't be modified
@@ -284,7 +285,8 @@ if __name__ == '__main__':
                  "attention_method": args.attention_method,
                  "attention_type": args.attention_type,
                  "encoder_layers": args.encoder_layers,
-                 "decoder_layers": args.decoder_layers}
+                 "decoder_layers": args.decoder_layers,
+                 "message": args.message}
 
     start_epoch = 0
     best_bleu4 = 0.  # BLEU-4 score right now
@@ -412,6 +414,8 @@ if __name__ == '__main__':
                                                  lr=args.encoder_lr)
     if args.fine_tune_encoder:
         train_name += "_finetuneEnc"
+    
+    train_name += "_" + args.message
     
     # Move to GPU, if available
     decoder = decoder.to(device)
