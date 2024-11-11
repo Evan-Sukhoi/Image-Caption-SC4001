@@ -82,7 +82,7 @@ def train(args, train_loader, encoder, decoder, criterion, encoder_optimizer, de
         # But we also encourage the weights at a single pixel p to sum to 1 across all timesteps T.
         # This means we want the model to attend to every pixel over the course of generating the entire sequence.
         # Therefore, we want to minimize the difference between 1 and the sum of a pixel's weights across all timesteps.
-        if args.mode == "lstm" or args.mode == "rnn":
+        if args.mode == "lstm" or (args.mode == "rnn" and decoder_attn):
             loss += args.alpha_c * ((1. - alphas.sum(dim=1)) ** 2).mean()
         elif args.mode == "transformer":
             dec_alphas = alphas["dec_enc_attns"]
@@ -120,7 +120,7 @@ def train(args, train_loader, encoder, decoder, criterion, encoder_optimizer, de
             print("Epoch: {}/{} step: {}/{} Loss: {} AVG_Loss: {} Top-5 Accuracy: {} Batch_time: {}s".format(epoch+1, args.epochs, i+1, len(train_loader), losses.val, losses.avg, top5accs.val, batch_time.val))
 
 
-def validate(args, val_loader, encoder, decoder, criterion):
+def validate(args, val_loader, encoder, decoder, criterion, decoder_attn=True):
     """
     Performs one epoch's validation.
 
@@ -156,7 +156,7 @@ def validate(args, val_loader, encoder, decoder, criterion):
             # Forward prop.
             if encoder is not None:
                 imgs = encoder(imgs)
-            if args.mode == "lstm-wo-attn":
+            if args.mode == "lstm-wo-attn" or args.attention_type == "none":
                 scores, caps_sorted, decode_lengths, sort_ind = decoder(imgs, caps, caplens)
             else:
                 scores, caps_sorted, decode_lengths, alphas, sort_ind = decoder(imgs, caps, caplens)
@@ -174,7 +174,7 @@ def validate(args, val_loader, encoder, decoder, criterion):
             loss = criterion(scores, targets)
 
             # Add doubly stochastic attention regularization
-            if args.mode == "lstm" or args.mode == "rnn":
+            if args.mode == "lstm" or (args.mode == "rnn" and decoder_attn):
                 loss += args.alpha_c * ((1. - alphas.sum(dim=1)) ** 2).mean()
             elif args.mode == "transformer":
                 dec_alphas = alphas["dec_enc_attns"]
@@ -269,6 +269,7 @@ if __name__ == '__main__':
     parser.add_argument('--alpha_c', type=float, default=1.,
                         help='regularization parameter for doubly stochastic attention, as in the paper.')
     parser.add_argument('--fine_tune_encoder', type=bool, default=False, help='whether fine-tune encoder or not')
+    parser.add_argument('--fine_tune_encoder_start_epoch', type=int, default=10, help='start fine-tuning encoder from this epoch')
     parser.add_argument('--fine_tune_embedding', type=bool, default=False, help='whether fine-tune word embeddings or not')
     parser.add_argument('--checkpoint', default=None, help='path to checkpoint, None if none.')
     parser.add_argument('--embedding_path', default=None, help='path to pre-trained word Embedding.')
@@ -311,9 +312,9 @@ if __name__ == '__main__':
                             decoder_dim=args.decoder_dim)
         else:
             encoder = CNN_Encoder(attention_method=args.attention_method)
-        encoder.fine_tune(args.fine_tune_encoder)
         encoder_optimizer = torch.optim.Adam(params=filter(lambda p: p.requires_grad, encoder.parameters()),
                                              lr=args.encoder_lr) if args.fine_tune_encoder else None
+        encoder.fine_tune(args.fine_tune_encoder, args.fine_tune_encoder_start_epoch)
 
         if args.mode == "rnn":
             if args.attention_type == "soft":
@@ -351,7 +352,7 @@ if __name__ == '__main__':
             decoder = RNN_LSTM_DecoderWithoutAttention(embed_dim=args.emb_dim,
                                                     decoder_dim=args.decoder_dim,
                                                     vocab_size=len(word_map))
-        
+
         elif args.mode == "transformer":
             train_name = "transformer"
             max_decoder_length = 52
@@ -444,7 +445,10 @@ if __name__ == '__main__':
 
     # Epochs
     for epoch in range(start_epoch, args.epochs):
-
+        
+        # set if encoder needs to start fine-tuning
+        encoder.start_fine_tuning_if_ready(epoch)
+        
         # Decay learning rate if there is no improvement for 5 consecutive epochs, and terminate training after 25
         # 8 20
         if epochs_since_improvement == args.stop_criteria:
@@ -460,12 +464,14 @@ if __name__ == '__main__':
         if args.mode == "lstm-wo-attn" or args.attention_type == "none":
             train(args, train_loader=train_loader, encoder=encoder, decoder=decoder, criterion=criterion,
                 encoder_optimizer=encoder_optimizer, decoder_optimizer=decoder_optimizer, epoch=epoch, decoder_attn=False)
+            # One epoch's validation
+            metrics = validate(args, val_loader=val_loader, encoder=encoder, decoder=decoder, criterion=criterion, decoder_attn=False)
         else:
             train(args, train_loader=train_loader, encoder=encoder, decoder=decoder, criterion=criterion,
                 encoder_optimizer=encoder_optimizer, decoder_optimizer=decoder_optimizer, epoch=epoch)
+            # One epoch's validation
+            metrics = validate(args, val_loader=val_loader, encoder=encoder, decoder=decoder, criterion=criterion)
 
-        # One epoch's validation
-        metrics = validate(args, val_loader=val_loader, encoder=encoder, decoder=decoder, criterion=criterion)
         recent_bleu4 = metrics["Bleu_4"]
 
         # Check if there was an improvement

@@ -236,11 +236,15 @@ class RNN_LSTM_DecoderWithAttention(nn.Module):
                                    + self.affine_decoder(self.dropout(h[:batch_size_t])))    # (batch_size_t, decoder_dim)
 
                 # s_t = g_t * tanh(c_t)
-                s_t = g_t * torch.tanh(c[:batch_size_t])   # (batch_size_t, decoder_dim)
+                # s_t = g_t * torch.tanh(c[:batch_size_t])   # (batch_size_t, decoder_dim)
 
                 h, c = self.decode_step_adaptive(
                     torch.cat([embeddings[:batch_size_t, t, :], v_g[:batch_size_t, :]], dim=1),
                                (h[:batch_size_t], c[:batch_size_t]))  # (batch_size_t, decoder_dim)
+                
+                
+                s_t = g_t * torch.tanh(c[:batch_size_t])   # (batch_size_t, decoder_dim)
+                
                 attention_weighted_encoding, alpha = self.adaptive_attention(encoder_out[:batch_size_t], h[:batch_size_t], s_t)
 
                 preds = self.fc(self.dropout(h)) + self.fc_encoder(self.dropout(attention_weighted_encoding))
@@ -286,6 +290,7 @@ class RNN_Decoder(nn.Module):
         self.decoder_dim = decoder_dim
         self.vocab_size = vocab_size
         self.dropout = dropout
+        self.attn_type = attn_type
 
         # Attention layer
         self.attention = Attention(encoder_dim, decoder_dim, attention_dim) 

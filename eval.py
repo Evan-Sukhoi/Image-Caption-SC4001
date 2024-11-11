@@ -18,6 +18,118 @@ import argparse
 # python eval.py --data_folder="./dataset/generated_data" --data_name=flickr8k_5_cap_per_img_5_min_word_freq --decoder_mode="lstm-wo-attn" --beam_size=3 --checkpoint="./checkpoint_flickr8k_5_cap_per_img_5_min_word_freq.pth.tar"
 # python eval.py --data_folder="./dataset/generated_data" --data_name=coco_5_cap_per_img_5_min_word_freq --decoder_mode="transformer" --beam_size=3 --checkpoint="./models/BEST_checkpoint_coco_5_cap_per_img_5_min_word_freq.pth.tar"
 
+def evaluate_rnn(args, use_attention=False):
+    """
+    Evaluation for decoder_mode: rnn
+
+    :param use_attention: Whether to use attention mechanism
+    :return: Evaluation metrics (e.g., BLEU-4 score, METEOR, etc.)
+    """
+    beam_size = args.beam_size
+    Caption_End = False
+    # DataLoader
+    loader = torch.utils.data.DataLoader(
+        CaptionDataset(args.data_folder, args.data_name, 'TEST', transform=transforms.Compose([normalize])),
+        batch_size=1, shuffle=True, num_workers=1, pin_memory=True)
+
+    references = list()
+    hypotheses = list()
+
+    with torch.no_grad():
+        for i, (image, caps, caplens, allcaps) in enumerate(tqdm(loader, desc="EVALUATING AT BEAM SIZE " + str(beam_size))):
+            image = image.to(device)
+            k = beam_size
+
+            encoder_out = encoder(image)
+            encoder_dim = encoder_out.size(-1)
+            encoder_out = encoder_out.view(1, -1, encoder_dim)
+            num_pixels = encoder_out.size(1)
+            encoder_out = encoder_out.expand(k, num_pixels, encoder_dim)
+
+            k_prev_words = torch.LongTensor([[word_map['<start>']]] * k).to(device)
+            seqs = k_prev_words
+            top_k_scores = torch.zeros(k, 1).to(device)
+
+            complete_seqs = []
+            complete_seqs_scores = []
+
+            step = 1
+            h = decoder.init_hidden_state(encoder_out)
+
+            while True:
+                embeddings = decoder.embedding(k_prev_words).squeeze(1)
+
+                if use_attention:
+                    awe, _ = decoder.attention(encoder_out, h)
+                    gate = decoder.sigmoid(decoder.f_beta(h))
+                    awe = gate * awe
+                else:
+                    awe = encoder_out.mean(dim=1)
+
+                h = decoder.rnn(torch.cat([embeddings, awe], dim=1), h)
+                scores = decoder.fc(h)
+                scores = F.log_softmax(scores, dim=1)
+                scores = top_k_scores.expand_as(scores) + scores
+
+                if step == 1:
+                    top_k_scores, top_k_words = scores[0].topk(k, 0, True, True)
+                else:
+                    top_k_scores, top_k_words = scores.view(-1).topk(k, 0, True, True)
+
+                prev_word_inds = top_k_words // vocab_size
+                next_word_inds = top_k_words % vocab_size
+
+                seqs = torch.cat([seqs[prev_word_inds], next_word_inds.unsqueeze(1)], dim=1)
+
+                incomplete_inds = [ind for ind, next_word in enumerate(next_word_inds) if
+                                   next_word != word_map['<end>']]
+                complete_inds = list(set(range(len(next_word_inds))) - set(incomplete_inds))
+
+                if len(complete_inds) > 0:
+                    Caption_End = True
+                    complete_seqs.extend(seqs[complete_inds].tolist())
+                    complete_seqs_scores.extend(top_k_scores[complete_inds])
+                k -= len(complete_inds)
+
+                if k == 0:
+                    break
+
+                seqs = seqs[incomplete_inds]
+                h = h[prev_word_inds[incomplete_inds]]
+                encoder_out = encoder_out[prev_word_inds[incomplete_inds]]
+                top_k_scores = top_k_scores[incomplete_inds].unsqueeze(1)
+                k_prev_words = next_word_inds[incomplete_inds].unsqueeze(1)
+
+                if step > args.max_encode_length - 2:
+                    break
+                step += 1
+
+            assert Caption_End
+            if len(complete_seqs_scores) == 0:
+                indices = top_k_scores.argmax().item()
+                seq = seqs[indices].tolist()
+
+                img_caps = allcaps[0].tolist()
+                img_captions = list(
+                    map(lambda c: [w for w in c if w not in {word_map['<start>'], word_map['<end>'], word_map['<pad>']}],
+                        img_caps))
+                references.append(img_captions)
+                hypotheses.append([w for w in seq if w not in {word_map['<start>'], word_map['<end>'], word_map['<pad>']}])
+            else:
+                indices = complete_seqs_scores.index(max(complete_seqs_scores))
+                seq = complete_seqs[indices]
+                img_caps = allcaps[0].tolist()
+                img_captions = list(
+                    map(lambda c: [w for w in c if w not in {word_map['<start>'], word_map['<end>'], word_map['<pad>']}],
+                        img_caps))
+                references.append(img_captions)
+                hypotheses.append([w for w in seq if w not in {word_map['<start>'], word_map['<end>'], word_map['<pad>']}])
+                assert len(references) == len(hypotheses)
+
+    metrics = get_eval_score(references, hypotheses)
+
+    return metrics
+
 
 def evaluate_lstm(args, use_attention=True):
     """
@@ -336,7 +448,10 @@ if __name__ == '__main__':
     # Normalization transform
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
-    if args.decoder_mode == "lstm":
+    
+    if args.decoder_mode == "rnn":
+        metrics = evaluate_rnn(args)
+    elif args.decoder_mode == "lstm":
         metrics = evaluate_lstm(args)
     elif args.decoder_mode == "lstm-wo-attn":
         metrics = evaluate_lstm(args, use_attention=False)
