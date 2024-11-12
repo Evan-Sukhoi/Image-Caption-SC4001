@@ -317,7 +317,7 @@ if __name__ == '__main__':
                                              weight_decay=1e-5) if args.fine_tune_encoder else None
         else:
             encoder = CNN_Encoder(attention_method=args.attention_method)
-        encoder_optimizer = torch.optim.Adam(params=filter(lambda p: p.requires_grad, encoder.parameters()),
+            encoder_optimizer = torch.optim.Adam(params=filter(lambda p: p.requires_grad, encoder.parameters()),
                                              lr=args.encoder_lr) if args.fine_tune_encoder else None
         encoder.fine_tune(args.fine_tune_encoder, args.fine_tune_encoder_start_epoch)
 
