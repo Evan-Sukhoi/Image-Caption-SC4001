@@ -43,6 +43,8 @@ python create_input_files.py --dataset="coco" --max_len=18 --karpathy_json_path=
 python create_input_files.py --dataset="flickr30k" --max_len=22 --karpathy_json_path="./dataset/caption_dataset/dataset_flickr30k.json" --image_folder="./dataset" --output_folder="./dataset/generated_data" 
 ```
 ### 3. Train the model
+
+#### 3.1 Choose model
 Train `Transformer` using default parameters:
 ```bash
 python -u train.py --mode="transformer"
@@ -56,7 +58,34 @@ python -u train.py --mode="lstm" --attention_type="adaptive"
 # Without attention
 python -u train.py --mode="lstm-wo-attn"
 ```
-Train `RNN without attention` using default parameters:
+Train `RNN` using default parameters:
 ```bash
+# Without attention
 python -u train.py --mode="rnn" --attention_type="none"
+```
+#### 3.2 Choose Parameters
+The default dataset `train.py` uses is `coco` (MSCOCO2014). To change it for `flickr30k` or `flickr8k`, please use `--data_name` option. Examples:
+```bash
+python -u train.py --mode="lstm" --data_name=flickr30k_5_cap_per_img_5_min_word_freq
+```
+To fine-tune the CNN encoder and begin at specific epochs, use `--fine_tune_encoder=True` and `--fine_tune_encoder_start_epoch` options:
+```bash
+python -u train.py --mode="lstm" --fine_tune_encoder=True --fine_tune_encoder_start_epoch=10 --epochs=15 --data_name=flickr30k_5_cap_per_img_5_min_word_freq
+```
+To change the number of layers in encoder or decoder of Transformer, please use `encoder_layers` (default: 2) and `--decoder_layers` (default: 6) options.
+
+The learning rates of encoder and decoder can be modified by `encoder_lr` (default: 1e-4) and `decoder_lr` (default: 1e-4) options.
+
+### 4. Evaluate the model
+
+To run `eval.py`, you must give the parameter of `--max_encode_length` and `--checkpoint`, which are corresponding to the dataset you are using, and the `--decoder_mode` of your model.
+```bash
+python eval.py --decoder_mode="transformer" --max_encode_length=18 --checkpoint="./models/BEST_checkpoint_epoch15_transformer_coco_5_cap_per_img_5_min_word_freq_.pth.tar" --beam_size=3
+```
+In this case, we use `--max_encode_length=18` becasue we limit maximum words to 18 of the COCO dataset as mentioned before.
+
+### 5. Captioning
+The parameters are similar with those of evaluation.
+```bash
+python caption.py --max_decoder_length=18 --img="./dataset/val2014/COCO_val2014_000000581886.jpg" --decoder_mode="transformer" --beam_size=3 --checkpoint="./models/BEST_checkpoint_transformer_e4d8_coco_5_cap_per_img_5_min_word_freq_.pth.tar"
 ```
