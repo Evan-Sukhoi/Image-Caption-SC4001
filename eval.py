@@ -154,9 +154,9 @@ def evaluate_lstm(args, use_attention=True):
 
     with torch.no_grad():
         for i, (image, caps, caplens, allcaps) in enumerate(tqdm(loader, desc="EVALUATING AT BEAM SIZE " + str(beam_size))):
+            # Move to GPU device, if available
             image = image.to(device)
             k = beam_size
-            # Move to GPU device, if available
             try:
                 if decoder.attn_type == "adaptive":
                     encoder_out, v_g = encoder(image)  # (1, enc_image_size, enc_image_size, encoder_dim)

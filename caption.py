@@ -49,7 +49,14 @@ def caption_image_beam_search(args, encoder, decoder, image_path, word_map):
 
     # Encode
     image = image.unsqueeze(0)  # (1, 3, 256, 256)
-    encoder_out = encoder(image)  # (1, enc_image_size, enc_image_size, encoder_dim)
+    try:
+        if decoder.attn_type == "adaptive":
+            encoder_out, v_g = encoder(image)  # (1, enc_image_size, enc_image_size, encoder_dim)
+            print(type(encoder_out))
+        else:
+            encoder_out = encoder(image)  #  [1, 3, 256, 256](1, enc_image_size, enc_image_size, encoder_dim) 
+    except:
+        encoder_out = encoder(image)  # (1, enc_image_size, enc_image_size, encoder_dim)
     enc_image_size = encoder_out.size(1)
     encoder_dim = encoder_out.size(-1)
     # Flatten encoding
@@ -62,7 +69,7 @@ def caption_image_beam_search(args, encoder, decoder, image_path, word_map):
     if args.decoder_mode == "lstm":
         k_prev_words = torch.LongTensor([[word_map['<start>']]] * k).to(device)  # (k, 1)
     elif args.decoder_mode == "transformer":
-        k_prev_words = torch.LongTensor([[word_map['<start>']] * 52] * k).to(device)  # (k, 52)
+        k_prev_words = torch.LongTensor([[word_map['<start>']] * args.max_decoder_length] * k).to(device)  # (k, max_decoder_length)
 
     # Tensor to store top k sequences; now they're just <start>
     seqs = torch.LongTensor([[word_map['<start>']]] * k).to(device)  # (k, 1)
@@ -87,18 +94,26 @@ def caption_image_beam_search(args, encoder, decoder, image_path, word_map):
             # print("Vocab size:", len(word_map))
             # print("Embedding weight size:", decoder.embedding.weight.size())
             embeddings = decoder.embedding(k_prev_words).squeeze(1)  # (s, embed_dim)
-            awe, alpha = decoder.attention(encoder_out, h)  # (s, encoder_dim), (s, num_pixels)
-            alpha = alpha.view(-1, enc_image_size, enc_image_size).unsqueeze(1)  # (s, 1, enc_image_size, enc_image_size)
-            gate = decoder.sigmoid(decoder.f_beta(h))  # gating scalar, (s, encoder_dim)
-            awe = gate * awe
-            h, c = decoder.lstm(torch.cat([embeddings, awe], dim=1), (h, c))  # (s, decoder_dim)
-            scores = decoder.fc(h)  # (s, vocab_size)
+            if hasattr(decoder, 'attn_type') and decoder.attn_type == "adaptive":
+                g_t = decoder.sigmoid(decoder.affine_embed(embeddings) + decoder.affine_decoder(h))
+                s_t = g_t * torch.tanh(c)
+                h, c = decoder.decode_step_adaptive(torch.cat([embeddings, v_g.expand_as(embeddings)], dim=1), (h, c))  # (batch_size_t, decoder_dim)
+                attention_weighted_encoding, alpha = decoder.adaptive_attention(encoder_out, h, s_t)
+                scores = decoder.fc(h) + decoder.fc_encoder(attention_weighted_encoding)
+                alpha = alpha[:,:-1].view(-1, enc_image_size, enc_image_size)
+            else:
+                awe, alpha = decoder.attention(encoder_out, h)  # attention_weighted_encoding: [s, encoder_dim]
+                gate = decoder.sigmoid(decoder.f_beta(h))  # gating scalar, (s, encoder_dim)
+                awe = gate * awe
+                h, c = decoder.lstm(torch.cat([embeddings, awe], dim=1), (h, c))  # [s, decoder_dim]
+                scores = decoder.fc(h)  # [s, vocab_size]
+                alpha = alpha.view(-1, enc_image_size, enc_image_size)  # (s, 1, enc_image_size, enc_image_size)
         elif args.decoder_mode == "transformer":
-            cap_len = torch.LongTensor([52]).repeat(k, 1)  # [s, 1]
+            cap_len = torch.LongTensor([args.max_decoder_length]).repeat(k, 1)  # [s, 1]
             scores, _, _, alpha_dict, _ = decoder(encoder_out, k_prev_words, cap_len)
             scores = scores[:, step - 1, :].squeeze(1)  # [s, 1, vocab_size] -> [s, vocab_size]
             # choose the last layer, transformer decoder is comosed of a stack of 6 identical layers.
-            alpha = alpha_dict["dec_enc_attns"][-1]  # [s, n_heads=8, len_q=52, len_k=196]
+            alpha = alpha_dict["dec_enc_attns"][-1]  # [s, n_heads=8, len_q=max_decoder_length, len_k=196]
             # TODO: AVG Attention to Visualize
             # for i in range(len(alpha_dict["dec_enc_attns"])):
             #     n_heads = alpha_dict["dec_enc_attns"][i].size(1)
@@ -123,7 +138,7 @@ def caption_image_beam_search(args, encoder, decoder, image_path, word_map):
         next_word_inds = top_k_words % vocab_size  # (s)
         # Add new words to sequences, alphas
         seqs = torch.cat([seqs[prev_word_inds], next_word_inds.unsqueeze(1)], dim=1)  # (s, step+1)
-        seqs_alpha = torch.cat([seqs_alpha[prev_word_inds], alpha[prev_word_inds]], dim=1)  # (s, step+1, enc_image_size, enc_image_size)
+        seqs_alpha = torch.cat([seqs_alpha[prev_word_inds], alpha[prev_word_inds].unsqueeze(1)], dim=1)  # (s, step+1, enc_image_size, enc_image_size)
 
         # Which sequences are incomplete (didn't reach <end>)?
         incomplete_inds = [ind for ind, next_word in enumerate(next_word_inds) if
@@ -150,7 +165,7 @@ def caption_image_beam_search(args, encoder, decoder, image_path, word_map):
             k_prev_words = next_word_inds[incomplete_inds].unsqueeze(1)
         elif args.decoder_mode == "transformer":
             k_prev_words = k_prev_words[incomplete_inds]
-            k_prev_words[:, :step + 1] = seqs  # [s, 52]
+            k_prev_words[:, :step + 1] = seqs  # [s, max_decoder_length]
             # k_prev_words[:, step] = next_word_inds[incomplete_inds]  # [s, 52]
 
         # Break if things have been going on too long
@@ -217,6 +232,7 @@ if __name__ == '__main__':
     parser.add_argument('--save_img_dir', '-p', default="./caption", help='path to save annotated img.')
     parser.add_argument('--beam_size', '-b', type=int, default=3, help='beam size for beam search')
     parser.add_argument('--dont_smooth', dest='smooth', action='store_false', help='do not smooth alpha overlay')
+    parser.add_argument('--max_decoder_length', '-l', type=int, default=52, help='maximum length of decoder caption (coco 20, flickr30k 24)')
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
