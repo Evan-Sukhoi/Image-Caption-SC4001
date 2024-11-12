@@ -48,21 +48,18 @@ class CNN_Encoder(nn.Module):
         out = out.permute(0, 2, 3, 1)
         return out
 
-    def fine_tune(self, fine_tune=True, start_fine_tune_epoch=None):
+    def fine_tune(self, fine_tune=True):
         """
         Allow or prevent the computation of gradients for convolutional blocks 2 through 4 of the encoder.
         :param fine_tune: True to allow fine-tuning, False to prevent.
-        :param start_fine_tune_epoch: Epoch number to start fine-tuning.
         """
-        if start_fine_tune_epoch is not None:
-            self.start_fine_tune_epoch = start_fine_tune_epoch
         
         for p in self.resnet.parameters():
             p.requires_grad = False
         # If fine-tuning, only fine-tune convolutional blocks 2 through 4
         for c in list(self.resnet.children())[5:]:
             for p in c.parameters():
-                p.requires_grad = fine_tune if self.start_fine_tune_epoch is None else False
+                p.requires_grad = fine_tune
                 
     def start_fine_tuning_if_ready(self, current_epoch):
         """
@@ -72,6 +69,7 @@ class CNN_Encoder(nn.Module):
         if self.start_fine_tune_epoch is not None and current_epoch >= self.start_fine_tune_epoch:
             print("Fine-tuning encoder at epoch {}.".format(current_epoch))
             self.fine_tune(fine_tune=True)
+
 
 class Adaptive_Encoder(CNN_Encoder):
     """

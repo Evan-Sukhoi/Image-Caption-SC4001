@@ -269,7 +269,7 @@ if __name__ == '__main__':
     parser.add_argument('--alpha_c', type=float, default=1.,
                         help='regularization parameter for doubly stochastic attention, as in the paper.')
     parser.add_argument('--fine_tune_encoder', type=bool, default=False, help='whether fine-tune encoder or not')
-    parser.add_argument('--fine_tune_encoder_start_epoch', type=int, default=10, help='start fine-tuning encoder from this epoch')
+    parser.add_argument('--fine_tune_encoder_start_epoch', type=int, default=None, help='start fine-tuning encoder from this epoch')
     parser.add_argument('--fine_tune_embedding', type=bool, default=False, help='whether fine-tune word embeddings or not')
     parser.add_argument('--checkpoint', default=None, help='path to checkpoint, None if none.')
     parser.add_argument('--embedding_path', default=None, help='path to pre-trained word Embedding.')
@@ -315,11 +315,14 @@ if __name__ == '__main__':
                                              lr=1e-5,
                                              betas=(0.8,0.999),
                                              weight_decay=1e-5) if args.fine_tune_encoder else None
+            # encoder_optimizer = torch.optim.Adam(params=filter(lambda p: p.requires_grad, encoder.parameters()),
+            #                                  lr=args.encoder_lr) if args.fine_tune_encoder else None
         else:
             encoder = CNN_Encoder(attention_method=args.attention_method)
             encoder_optimizer = torch.optim.Adam(params=filter(lambda p: p.requires_grad, encoder.parameters()),
                                              lr=args.encoder_lr) if args.fine_tune_encoder else None
-        encoder.fine_tune(args.fine_tune_encoder, args.fine_tune_encoder_start_epoch)
+        encoder.fine_tune(args.fine_tune_encoder)
+        encoder.start_fine_tune_epoch = args.fine_tune_encoder_start_epoch
 
         if args.mode == "rnn":
             if args.attention_type == "soft":
@@ -371,10 +374,12 @@ if __name__ == '__main__':
                                     max_decode_length=max_decoder_length)
         if args.attention_type == "adaptive":
             decoder_optimizer = torch.optim.Adam(
-                        params=filter(lambda p: p.requires_grad, encoder.parameters()),
+                        params=filter(lambda p: p.requires_grad, decoder.parameters()),
                         lr=5e-4,
                         betas=(0.8,0.999),
                         weight_decay=1e-5)
+            # decoder_optimizer = torch.optim.Adam(params=filter(lambda p: p.requires_grad, decoder.parameters()),
+            #                                     lr=args.decoder_lr)
         else:
             decoder_optimizer = torch.optim.Adam(params=filter(lambda p: p.requires_grad, decoder.parameters()),
                                                 lr=args.decoder_lr)
