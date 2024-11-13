@@ -269,7 +269,7 @@ if __name__ == '__main__':
     parser.add_argument('--alpha_c', type=float, default=1.,
                         help='regularization parameter for doubly stochastic attention, as in the paper.')
     parser.add_argument('--fine_tune_encoder', type=bool, default=False, help='whether fine-tune encoder or not')
-    parser.add_argument('--fine_tune_encoder_start_epoch', type=int, default=None, help='start fine-tuning encoder from this epoch')
+    parser.add_argument('--fine_tune_encoder_start_epoch', type=int, default=10, help='start fine-tuning encoder from this epoch')
     parser.add_argument('--fine_tune_embedding', type=bool, default=False, help='whether fine-tune word embeddings or not')
     parser.add_argument('--checkpoint', default=None, help='path to checkpoint, None if none.')
     parser.add_argument('--embedding_path', default=None, help='path to pre-trained word Embedding.')
@@ -338,7 +338,7 @@ if __name__ == '__main__':
                 decoder = RNN_Decoder(embed_dim=args.emb_dim,
                                     decoder_dim=args.decoder_dim,
                                     vocab_size=len(word_map),
-                                    attn_type="none")   
+                                    attn_type="none")
         elif args.mode == "lstm":
             if args.attention_type == "soft":
                 train_name = "lstm-soft"

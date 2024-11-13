@@ -100,7 +100,7 @@ def evaluate_rnn(args, use_attention=False):
                 top_k_scores = top_k_scores[incomplete_inds].unsqueeze(1)
                 k_prev_words = next_word_inds[incomplete_inds].unsqueeze(1)
 
-                if step > args.max_encode_length - 2:
+                if step > args.max_encode_length:
                     break
                 step += 1
 
@@ -160,7 +160,7 @@ def evaluate_lstm(args, use_attention=True):
             try:
                 if decoder.attn_type == "adaptive":
                     encoder_out, v_g = encoder(image)  # (1, enc_image_size, enc_image_size, encoder_dim)
-                    print(type(encoder_out))
+                    # print(type(encoder_out))
                 else:
                     encoder_out = encoder(image)  #  [1, 3, 256, 256](1, enc_image_size, enc_image_size, encoder_dim) 
             except:
@@ -190,12 +190,10 @@ def evaluate_lstm(args, use_attention=True):
             # s is a number less than or equal to k, because sequences are removed from this process once they hit <end>
             while True:
                 embeddings = decoder.embedding(k_prev_words).squeeze(1)  # [s, embed_dim]
-                
                 if hasattr(decoder, 'attn_type') and decoder.attn_type == "adaptive":
                     g_t = decoder.sigmoid(decoder.affine_embed(embeddings) + decoder.affine_decoder(h))
-                    s_t = g_t * torch.tanh(c)
-
                     h, c = decoder.decode_step_adaptive(torch.cat([embeddings, v_g.expand_as(embeddings)], dim=1), (h, c))  # (batch_size_t, decoder_dim)
+                    s_t = g_t * torch.tanh(c)
                     attention_weighted_encoding, alpha = decoder.adaptive_attention(encoder_out, h, s_t)
                     scores = decoder.fc(h) + decoder.fc_encoder(attention_weighted_encoding)
                 else:
@@ -207,7 +205,7 @@ def evaluate_lstm(args, use_attention=True):
                         awe = encoder_out.mean(dim=1) # no attention, use mean of encoder_out
                     h, c = decoder.lstm(torch.cat([embeddings, awe], dim=1), (h, c))  # [s, decoder_dim]
                     scores = decoder.fc(h)  # [s, vocab_size]
-                    
+
                 scores = F.log_softmax(scores, dim=1)
                 # top_k_scores: [s, 1]
                 scores = top_k_scores.expand_as(scores) + scores  # [s, vocab_size]
@@ -244,7 +242,7 @@ def evaluate_lstm(args, use_attention=True):
                 top_k_scores = top_k_scores[incomplete_inds].unsqueeze(1)
                 k_prev_words = next_word_inds[incomplete_inds].unsqueeze(1)
                 # Break if things have been going on too long
-                if step > args.max_encode_length - 2:
+                if step > args.max_encode_length + 2:
                     break
                 step += 1
 
@@ -314,7 +312,7 @@ def evaluate_transformer(args):
             encoder_out = encoder_out.expand(k, enc_image_size, enc_image_size, encoder_dim)  # [k, enc_image_size, enc_image_size, encoder_dim]
             # Tensor to store top k previous words at each step; now they're just <start>
             # Important: [1, 52] (eg: [[<start> <start> <start> ...]]) will not work, since it contains the position encoding
-            k_prev_words = torch.LongTensor([[word_map['<start>']]*args.max_encode_length] * k).to(device)  # (k, 52)
+            k_prev_words = torch.LongTensor([[word_map['<start>']]*args.max_encode_length + 2] * k).to(device)  # (k, 52), add start and end token
             # Tensor to store top k sequences; now they're just <start>
             seqs = torch.LongTensor([[word_map['<start>']]] * k).to(device)  # (k, 1)
             # Tensor to store top k sequences' scores; now they're just 0
@@ -329,7 +327,7 @@ def evaluate_transformer(args):
             while True:
                 # print("steps {} k_prev_words: {}".format(step, k_prev_words))
                 # cap_len = torch.LongTensor([52]).repeat(k, 1).to(device) may cause different sorted results on GPU/CPU in transformer.py
-                cap_len = torch.LongTensor([args.max_encode_length]).repeat(k, 1)  # [s, 1]
+                cap_len = torch.LongTensor([args.max_encode_length + 2]).repeat(k, 1)  # [s, 1], add start and end token
                 scores, _, _, _, _ = decoder(encoder_out, k_prev_words, cap_len)
                 scores = scores[:, step-1, :].squeeze(1)  # [s, 1, vocab_size] -> [s, vocab_size]
                 scores = F.log_softmax(scores, dim=1)
@@ -370,7 +368,7 @@ def evaluate_transformer(args):
                 k_prev_words[:, :step+1] = seqs  # [s, 52]
                 # k_prev_words[:, step] = next_word_inds[incomplete_inds]  # [s, 52]
                 # Break if things have been going on too long
-                if step > args.max_encode_length - 2:
+                if step > args.max_encode_length:
                     break
                 step += 1
 
@@ -418,8 +416,10 @@ if __name__ == '__main__':
     parser.add_argument('--beam_size', type=int, default=3, help='beam_size.')
     parser.add_argument('--checkpoint', default="./models/BEST_checkpoint_coco_5_cap_per_img_5_min_word_freq.pth.tar",
                         help='model checkpoint.')
-    parser.add_argument('--max_encode_length', type=int, default=52, help='max_encode_length')
+    parser.add_argument('--max_encode_length', type=int, default=50, help='max caption length')
     args = parser.parse_args()
+    
+    print(f"data_name: {args.data_name}  max_encoder_length: {args.max_encode_length}")
 
     word_map_file = os.path.join(args.data_folder, 'WORDMAP_' + args.data_name + '.json')
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -461,3 +461,4 @@ if __name__ == '__main__':
     print("{} - beam size {}: BLEU-1 {} BLEU-2 {} BLEU-3 {} BLEU-4 {} METEOR {} ROUGE_L {} CIDEr {}".format
           (args.decoder_mode, args.beam_size, metrics["Bleu_1"],  metrics["Bleu_2"],  metrics["Bleu_3"],  metrics["Bleu_4"],
            metrics["METEOR"], metrics["ROUGE_L"], metrics["CIDEr"]))
+    print()

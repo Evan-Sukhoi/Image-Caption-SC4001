@@ -69,6 +69,8 @@ class CNN_Encoder(nn.Module):
         if self.start_fine_tune_epoch is not None and current_epoch >= self.start_fine_tune_epoch:
             print("Fine-tuning encoder at epoch {}.".format(current_epoch))
             self.fine_tune(fine_tune=True)
+        else:
+            print("Not fine-tuning encoder yet at epoch {}. Will start at epoch {}.".format(current_epoch, self.start_fine_tune_epoch))
 
 
 class Adaptive_Encoder(CNN_Encoder):

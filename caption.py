@@ -232,8 +232,9 @@ if __name__ == '__main__':
     parser.add_argument('--save_img_dir', '-p', default="./caption", help='path to save annotated img.')
     parser.add_argument('--beam_size', '-b', type=int, default=3, help='beam size for beam search')
     parser.add_argument('--dont_smooth', dest='smooth', action='store_false', help='do not smooth alpha overlay')
-    parser.add_argument('--max_decoder_length', '-l', type=int, default=52, help='maximum length of decoder caption (coco 20, flickr30k 24)')
+    parser.add_argument('--max_decoder_length', '-l', type=int, default=50, help='maximum length of decoder caption (coco 20, flickr30k 24)')
     args = parser.parse_args()
+    args.max_decoder_length += 2  # add start and end token
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # transformer.device = torch.device("cpu")
