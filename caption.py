@@ -10,10 +10,8 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import skimage.transform
 import argparse
-# from scipy.misc import imread, imresize
 import imageio
 from PIL import Image
-# import transformer, models
 
 
 def caption_image_beam_search(args, encoder, decoder, image_path, word_map):
@@ -52,7 +50,7 @@ def caption_image_beam_search(args, encoder, decoder, image_path, word_map):
     try:
         if decoder.attn_type == "adaptive":
             encoder_out, v_g = encoder(image)  # (1, enc_image_size, enc_image_size, encoder_dim)
-            print(type(encoder_out))
+            # print(type(encoder_out))
         else:
             encoder_out = encoder(image)  #  [1, 3, 256, 256](1, enc_image_size, enc_image_size, encoder_dim) 
     except:
@@ -96,8 +94,8 @@ def caption_image_beam_search(args, encoder, decoder, image_path, word_map):
             embeddings = decoder.embedding(k_prev_words).squeeze(1)  # (s, embed_dim)
             if hasattr(decoder, 'attn_type') and decoder.attn_type == "adaptive":
                 g_t = decoder.sigmoid(decoder.affine_embed(embeddings) + decoder.affine_decoder(h))
-                s_t = g_t * torch.tanh(c)
                 h, c = decoder.decode_step_adaptive(torch.cat([embeddings, v_g.expand_as(embeddings)], dim=1), (h, c))  # (batch_size_t, decoder_dim)
+                s_t = g_t * torch.tanh(c)
                 attention_weighted_encoding, alpha = decoder.adaptive_attention(encoder_out, h, s_t)
                 scores = decoder.fc(h) + decoder.fc_encoder(attention_weighted_encoding)
                 alpha = alpha[:,:-1].view(-1, enc_image_size, enc_image_size)
@@ -138,8 +136,11 @@ def caption_image_beam_search(args, encoder, decoder, image_path, word_map):
         next_word_inds = top_k_words % vocab_size  # (s)
         # Add new words to sequences, alphas
         seqs = torch.cat([seqs[prev_word_inds], next_word_inds.unsqueeze(1)], dim=1)  # (s, step+1)
-        seqs_alpha = torch.cat([seqs_alpha[prev_word_inds], alpha[prev_word_inds].unsqueeze(1)], dim=1)  # (s, step+1, enc_image_size, enc_image_size)
-
+        if args.decoder_mode == "transformer":
+            seqs_alpha = torch.cat([seqs_alpha[prev_word_inds], alpha[prev_word_inds]], dim=1)  # (s, step+1, enc_image_size, enc_image_size)
+        else:
+            seqs_alpha = torch.cat([seqs_alpha[prev_word_inds], alpha[prev_word_inds].unsqueeze(1)], dim=1)
+            
         # Which sequences are incomplete (didn't reach <end>)?
         incomplete_inds = [ind for ind, next_word in enumerate(next_word_inds) if
                            next_word != word_map['<end>']]

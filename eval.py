@@ -10,7 +10,6 @@ from nltk.translate.bleu_score import corpus_bleu
 import torch.nn.functional as F
 from tqdm import tqdm
 import argparse
-# import transformer, models
 
 # python eval.py --data_folder="./dataset/generated_data" --data_name=flickr30k_5_cap_per_img_5_min_word_freq --decoder_mode="lstm" --beam_size=3 --checkpoint="./BEST_checkpoint_flickr30k_5_cap_per_img_5_min_word_freq.pth.tar"
 

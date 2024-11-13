@@ -93,16 +93,12 @@ class PoswiseFeedForwardNet(nn.Module):
 
 
 class DecoderLayer(nn.Module):
-    def __init__(self, embed_dim, dropout, attention_method, n_heads):
+    def __init__(self, embed_dim, dropout, n_heads):
         super(DecoderLayer, self).__init__()
         self.dec_self_attn = Multi_Head_Attention(Q_dim=embed_dim, K_dim=embed_dim, QKVdim=64, n_heads=n_heads, dropout=dropout)
-        if attention_method == "ByPixel":
-            self.dec_enc_attn = Multi_Head_Attention(Q_dim=embed_dim, K_dim=2048, QKVdim=64, n_heads=n_heads, dropout=dropout)
-            self.pos_ffn = PoswiseFeedForwardNet(embed_dim=embed_dim, d_ff=2048, dropout=dropout)
-        elif attention_method == "ByChannel":
-            self.dec_enc_attn = Multi_Head_Attention(Q_dim=embed_dim, K_dim=196, QKVdim=64, n_heads=n_heads, dropout=dropout)
-            self.pos_ffn = PoswiseFeedForwardNet(embed_dim=embed_dim, d_ff=2048, dropout=dropout)  # need to change
-
+        self.dec_enc_attn = Multi_Head_Attention(Q_dim=embed_dim, K_dim=2048, QKVdim=64, n_heads=n_heads, dropout=dropout)
+        self.pos_ffn = PoswiseFeedForwardNet(embed_dim=embed_dim, d_ff=2048, dropout=dropout)
+        
     def forward(self, dec_inputs, enc_outputs, dec_self_attn_mask, dec_enc_attn_mask):
         """
         :param dec_inputs: [batch_size, max_len=max_decode_length, embed_dim=512]
@@ -117,16 +113,15 @@ class DecoderLayer(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, n_layers, vocab_size, embed_dim, dropout, attention_method, n_heads, max_decode_length=52):
+    def __init__(self, n_layers, vocab_size, embed_dim, dropout, n_heads, max_decode_length=52):
         super(Decoder, self).__init__()
         self.vocab_size = vocab_size
         self.max_decode_length = max_decode_length
         self.tgt_emb = nn.Embedding(vocab_size, embed_dim, padding_idx=0)
         self.pos_emb = nn.Embedding.from_pretrained(self.get_position_embedding_table(embed_dim), freeze=True)
         self.dropout = nn.Dropout(p=dropout)
-        self.layers = nn.ModuleList([DecoderLayer(embed_dim, dropout, attention_method, n_heads) for _ in range(n_layers)])
+        self.layers = nn.ModuleList([DecoderLayer(embed_dim, dropout, n_heads) for _ in range(n_layers)])
         self.projection = nn.Linear(embed_dim, vocab_size, bias=False).to(device)
-        self.attention_method = attention_method
 
     def get_position_embedding_table(self, embed_dim):
         def cal_angle(position, hid_idx):
@@ -185,10 +180,7 @@ class Decoder(nn.Module):
         dec_self_attn_pad_mask = self.get_attn_pad_mask(encoded_captions, encoded_captions)
         dec_self_attn_subsequent_mask = self.get_attn_subsequent_mask(encoded_captions)
         dec_self_attn_mask = torch.gt((dec_self_attn_pad_mask + dec_self_attn_subsequent_mask), 0)
-        if self.attention_method == "ByPixel":
-            dec_enc_attn_mask = (torch.tensor(np.zeros((batch_size, self.max_decode_length, 196))).to(device) == torch.tensor(np.ones((batch_size, self.max_decode_length, 196))).to(device))
-        elif self.attention_method == "ByChannel":
-            dec_enc_attn_mask = (torch.tensor(np.zeros((batch_size, self.max_decode_length, channel_number))).to(device) == torch.tensor(np.ones((batch_size, self.max_decode_length, channel_number))).to(device))
+        dec_enc_attn_mask = (torch.tensor(np.zeros((batch_size, self.max_decode_length, 196))).to(device) == torch.tensor(np.ones((batch_size, self.max_decode_length, 196))).to(device))
 
         dec_self_attns, dec_enc_attns = [], []
         for layer in self.layers:
@@ -201,17 +193,13 @@ class Decoder(nn.Module):
 
 
 class EncoderLayer(nn.Module):
-    def __init__(self, dropout, attention_method, n_heads):
+    def __init__(self, dropout, n_heads):
         super(EncoderLayer, self).__init__()
         """
         In "Attention is all you need" paper, dk = dv = 64, h = 8, N=6
         """
-        if attention_method == "ByPixel":
-            self.enc_self_attn = Multi_Head_Attention(Q_dim=2048, K_dim=2048, QKVdim=64, n_heads=n_heads, dropout=dropout)
-            self.pos_ffn = PoswiseFeedForwardNet(embed_dim=2048, d_ff=4096, dropout=dropout)
-        elif attention_method == "ByChannel":
-            self.enc_self_attn = Multi_Head_Attention(Q_dim=196, K_dim=196, QKVdim=64, n_heads=n_heads, dropout=dropout)
-            self.pos_ffn = PoswiseFeedForwardNet(embed_dim=196, d_ff=512, dropout=dropout)
+        self.enc_self_attn = Multi_Head_Attention(Q_dim=2048, K_dim=2048, QKVdim=64, n_heads=n_heads, dropout=dropout)
+        self.pos_ffn = PoswiseFeedForwardNet(embed_dim=2048, d_ff=4096, dropout=dropout)
 
     def forward(self, enc_inputs, enc_self_attn_mask):
         """
@@ -225,13 +213,11 @@ class EncoderLayer(nn.Module):
 
 
 class Encoder(nn.Module):
-    def __init__(self, n_layers, dropout, attention_method, n_heads):
+    def __init__(self, n_layers, dropout, n_heads):
         super(Encoder, self).__init__()
-        if attention_method == "ByPixel":
-            self.pos_emb = nn.Embedding.from_pretrained(self.get_position_embedding_table(), freeze=True)
+        self.pos_emb = nn.Embedding.from_pretrained(self.get_position_embedding_table(), freeze=True)
         # self.dropout = nn.Dropout(p=dropout)
-        self.layers = nn.ModuleList([EncoderLayer(dropout, attention_method, n_heads) for _ in range(n_layers)])
-        self.attention_method = attention_method
+        self.layers = nn.ModuleList([EncoderLayer(dropout, n_heads) for _ in range(n_layers)])
 
     def get_position_embedding_table(self):
         def cal_angle(position, hid_idx):
@@ -252,8 +238,7 @@ class Encoder(nn.Module):
         """
         batch_size = encoder_out.size(0)
         positions = encoder_out.size(1)
-        if self.attention_method == "ByPixel":
-            encoder_out = encoder_out + self.pos_emb(torch.LongTensor([list(range(positions))]*batch_size).to(device))
+        encoder_out = encoder_out + self.pos_emb(torch.LongTensor([list(range(positions))]*batch_size).to(device))
         # encoder_out = self.dropout(encoder_out)
         # enc_self_attn_mask: [batch_size, 196, 196]
         enc_self_attn_mask = (torch.tensor(np.zeros((batch_size, positions, positions))).to(device)
@@ -272,12 +257,11 @@ class Transformer(nn.Module):
     In addition, apply dropout to the sums of the embeddings and the positional encodings in both the encoder
     and decoder stacks." (Now, we dont't apply dropout to the encoder embeddings)
     """
-    def __init__(self, vocab_size, embed_dim, encoder_layers, decoder_layers, dropout=0.1, attention_method="ByPixel", n_heads=8, max_decode_length=52):
+    def __init__(self, vocab_size, embed_dim, encoder_layers, decoder_layers, dropout=0.1, n_heads=8, max_decode_length=52):
         super(Transformer, self).__init__()
-        self.encoder = Encoder(encoder_layers, dropout, attention_method, n_heads)
-        self.decoder = Decoder(decoder_layers, vocab_size, embed_dim, dropout, attention_method, n_heads, max_decode_length)
+        self.encoder = Encoder(encoder_layers, dropout, n_heads)
+        self.decoder = Decoder(decoder_layers, vocab_size, embed_dim, dropout, n_heads, max_decode_length)
         self.embedding = self.decoder.tgt_emb
-        self.attention_method = attention_method
         self.max_decode_length = max_decode_length
 
     def load_pretrained_embeddings(self, embeddings):
@@ -301,10 +285,7 @@ class Transformer(nn.Module):
         """
         batch_size = enc_inputs.size(0)
         encoder_dim = enc_inputs.size(-1)
-        if self.attention_method == "ByPixel":
-            enc_inputs = enc_inputs.view(batch_size, -1, encoder_dim)
-        elif self.attention_method == "ByChannel":
-            enc_inputs = enc_inputs.view(batch_size, -1, encoder_dim).permute(0, 2, 1)  # (batch_size, 2048, 196)
+        enc_inputs = enc_inputs.view(batch_size, -1, encoder_dim)
 
         encoder_out, enc_self_attns = self.encoder(enc_inputs)
         # encoder_out: [batch_size, 196, 2048]

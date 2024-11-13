@@ -9,7 +9,6 @@ import torch.utils.data
 import torchvision.transforms as transforms
 from torch import nn
 from torch.nn.utils.rnn import pack_padded_sequence
-# from models import *
 from decoder import *
 from encoder import *
 from transformer import *
@@ -253,7 +252,6 @@ if __name__ == '__main__':
     parser.add_argument('--dropout', type=float, default=0.1, help='dropout')
     parser.add_argument('--mode', default="transformer", help='which model (or attention type) does decoder use?')  # lstm or transformer
     parser.add_argument('--attention_type', default="soft", help='Soft, Adaptive') # Soft or Adaptive
-    parser.add_argument('--attention_method', default="ByPixel", help='which attention method to use?')  # ByPixel or ByChannel
     parser.add_argument('--encoder_layers', type=int, default=2, help='the number of layers of encoder in Transformer.')
     parser.add_argument('--decoder_layers', type=int, default=6, help='the number of layers of decoder in Transformer.')
     # Training parameters
@@ -283,7 +281,6 @@ if __name__ == '__main__':
                  "n_heads": args.n_heads,
                  "dropout": args.dropout,
                  "mode": args.mode,
-                 "attention_method": args.attention_method,
                  "attention_type": args.attention_type,
                  "encoder_layers": args.encoder_layers,
                  "decoder_layers": args.decoder_layers,
@@ -318,11 +315,12 @@ if __name__ == '__main__':
             # encoder_optimizer = torch.optim.Adam(params=filter(lambda p: p.requires_grad, encoder.parameters()),
             #                                  lr=args.encoder_lr) if args.fine_tune_encoder else None
         else:
-            encoder = CNN_Encoder(attention_method=args.attention_method)
+            encoder = CNN_Encoder()
             encoder_optimizer = torch.optim.Adam(params=filter(lambda p: p.requires_grad, encoder.parameters()),
                                              lr=args.encoder_lr) if args.fine_tune_encoder else None
         encoder.fine_tune(args.fine_tune_encoder)
-        encoder.start_fine_tune_epoch = args.fine_tune_encoder_start_epoch
+        if args.fine_tune_embedding:
+            encoder.start_fine_tune_epoch = args.fine_tune_encoder_start_epoch
 
         if args.mode == "rnn":
             if args.attention_type == "soft":
@@ -370,8 +368,7 @@ if __name__ == '__main__':
                 max_decoder_length = 20
             decoder = Transformer(vocab_size=len(word_map), embed_dim=args.emb_dim, encoder_layers=args.encoder_layers,
                                     decoder_layers=args.decoder_layers, dropout=args.dropout,
-                                    attention_method=args.attention_method, n_heads=args.n_heads, 
-                                    max_decode_length=max_decoder_length)
+                                    n_heads=args.n_heads, max_decode_length=max_decoder_length)
         if args.attention_type == "adaptive":
             decoder_optimizer = torch.optim.Adam(
                         params=filter(lambda p: p.requires_grad, decoder.parameters()),
@@ -437,9 +434,9 @@ if __name__ == '__main__':
     # Move to GPU, if available
     decoder = decoder.to(device)
     encoder = encoder.to(device)
-    print("encoder_layers {} decoder_layers {} n_heads {} dropout {} attention_method {} encoder_lr {} "
+    print("encoder_layers {} decoder_layers {} n_heads {} dropout {} encoder_lr {} fine_tune_encoder {}"
           "decoder_lr {} alpha_c {}".format(args.encoder_layers, args.decoder_layers, args.n_heads, args.dropout,
-                                            args.attention_method, args.encoder_lr, args.decoder_lr, args.alpha_c))
+                                            args.encoder_lr, args.decoder_lr, args.alpha_c, args.fine_tune_encoder))
     print(encoder)
     print(decoder)
 
