@@ -23,14 +23,17 @@ cd Image-Caption-SC4001
 ```
 Download and unzip the dataset files.
 ```bash
+mkdir dataset/caption_dataset
 curl -o ./dataset/train2014.zip http://images.cocodataset.org/zips/train2014.zip &
 curl -o ./dataset/val2014.zip http://images.cocodataset.org/zips/val2014.zip &
-curl -o ./dataset/glove.6B.zip http://nlp.stanford.edu/data/glove.6B.zip &
-curl -o ./dataset/caption_dataset/caption_datasets.zip http://cs.stanford.edu/people/karpathy/deepimagesent/caption_datasets.zip
-
-unzip ./dataset/glove.6B.zip -d ./dataset/Glove 
+curl -L -o ./dataset/flickr30k.zip https://www.kaggle.com/api/v1/datasets/download/adityajn105/flickr30k &
+curl -o ./dataset/caption_dataset/caption_datasets.zip https://cs.stanford.edu/people/karpathy/deepimagesent/caption_datasets.zip
+```
+```bash
 unzip ./dataset/train2014.zip -d ./dataset
 unzip ./dataset/val2014.zip -d ./dataset
+unzip ./dataset/flickr30k.zip -d ./dataset
+mv ./dataset/images ./dataset/flickr30k_images
 unzip ./dataset/caption_dataset/caption_datasets.zip -d ./dataset/caption_dataset
 ```
 Use tools to create input data files.
