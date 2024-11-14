@@ -139,6 +139,11 @@ The model consists of an Encoder-Decoder structure where the input image is firs
 
 We use the CNN-Transformer architecture, a pre-trained CNN is used as the encoder to extract spatial features from the image. These features are then processed by a Transformer with positional encoding to maintain the spatial structure of the image.
 
+![](./image/CNN_Transformer.png)
+
 ## Acknowledgement
 
-The code is developed based on [a-PyTorch-Tutorial-to-Image-Captioning](https://github.com/sgrvinod/a-PyTorch-Tutorial-to-Image-Captioning). Also, 
+The works are helpful for this project: 
+- [sgrvinod: a-PyTorch-Tutorial-to-Image-Captioning](https://github.com/sgrvinod/a-PyTorch-Tutorial-to-Image-Captioning)
+- [jadore801120: attention-is-all-you-need-pytorch](https://github.com/jadore801120/attention-is-all-you-need-pytorch)
+- [RoyalSkye: Image-Caption](https://github.com/RoyalSkye/Image-Caption)
