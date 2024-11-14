@@ -141,9 +141,23 @@ We use the CNN-Transformer architecture, a pre-trained CNN is used as the encode
 
 ![](./image/CNN_Transformer.png)
 
+## References
+
+1. Ghandi, Taraneh, Pourreza, Hamidreza, & Mahyar, Hamidreza. (2023). Deep learning approaches on image captioning: A review. *ACM Computing Surveys, 56*(3), 1-39. ACM New York, NY.
+
+2. Vinyals, Oriol, Toshev, Alexander, Bengio, Samy, & Erhan, Dumitru. (2015). Show and tell: A neural image caption generator. In *Proceedings of the IEEE conference on computer vision and pattern recognition* (pp. 3156-3164).
+
+3. Xu, Kelvin. (2015). Show, attend and tell: Neural image caption generation with visual attention. *arXiv preprint arXiv:1502.03044*.
+
+4. Lu, Jiasen, Xiong, Caiming, Parikh, Devi, & Socher, Richard. (2017). Knowing when to look: Adaptive attention via a visual sentinel for image captioning. In *Proceedings of the IEEE conference on computer vision and pattern recognition* (pp. 375-383).
+
+5. You, Quanzeng, Jin, Hailin, Wang, Zhaowen, Fang, Chen, & Luo, Jiebo. (2016). Image captioning with semantic attention. In *Proceedings of the IEEE conference on computer vision and pattern recognition* (pp. 4651-4659).
+
+6. Vaswani, A. (2017). Attention is all you need. *Advances in Neural Information Processing Systems*.
+
 ## Acknowledgement
 
-The works are helpful for this project: 
+These works are helpful for this project: 
 - [sgrvinod: a-PyTorch-Tutorial-to-Image-Captioning](https://github.com/sgrvinod/a-PyTorch-Tutorial-to-Image-Captioning)
 - [jadore801120: attention-is-all-you-need-pytorch](https://github.com/jadore801120/attention-is-all-you-need-pytorch)
 - [RoyalSkye: Image-Caption](https://github.com/RoyalSkye/Image-Caption)
