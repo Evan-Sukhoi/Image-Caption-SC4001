@@ -2,6 +2,27 @@
 
 > This is the final project of *Neural Network & Deep Learning* course (SC4001), NTU.  We evaluated the RNN, LSTM, and Transformer decoders under a consistent configuration and experimented with various hyperparameter adjustments to enhance results. In particular, we integrated the adaptive attention mechanism into our framework as an advanced technique. Lastly, we visualized the caption-generation process to demonstrate the impact of attention mechanisms and conducted comprehensive automatic evaluations across the models.
 
+## Result
+- MSCOCO2014
+
+| Decoder     | Config              | B-1   | B-2   | B-3   | B-4   | METEOR | ROUGE_L | CIDEr  |
+|-------------|----------------------|-------|-------|-------|-------|--------|---------|--------|
+| LSTM        | w/o attention        | 0.7123 | 0.5435 | 0.4065 | 0.3039 | 0.2538 | 0.5249  | 0.9402 |
+| LSTM        | soft attention       | 0.7123 | 0.5408 | 0.4057 | 0.3057 | 0.2582 | 0.5280  | 0.9674 |
+| LSTM        | adaptive attention   | 0.7139 | 0.5061 | 0.3383 | 0.2268 | 0.2704 | 0.5652  | 0.8038 |
+| Transformer | encoder=4, decoder=8 | 0.7272 | 0.5631 | 0.4263 | 0.3232 | 0.2636 | 0.5389  | 1.0279 |
+
+- Flickr30k
+
+| Decoder     | Config              | B-1   | B-2   | B-3   | B-4   | METEOR | ROUGE_L | CIDEr  |
+|-------------|----------------------|-------|-------|-------|-------|--------|---------|--------|
+| RNN         | w/o attention        | 0.6175 | 0.4280 | 0.2930 | 0.2000 | 0.2004 | 0.4333  | 0.4319 |
+| RNN         | soft attention       | 0.6272 | 0.3943 | 0.2378 | 0.1440 | 0.2235 | 0.4839  | 0.4768 |
+| LSTM        | w/o attention        | 0.6225 | 0.4339 | 0.2977 | 0.2026 | 0.2034 | 0.4384  | 0.4569 |
+| LSTM        | soft attention       | 0.6360 | 0.4491 | 0.3127 | 0.2161 | 0.2072 | 0.4477  | 0.4956 |
+| LSTM        | adaptive attention   | 0.6263 | 0.3915 | 0.2348 | 0.1421 | 0.2222 | 0.4794  | 0.4476 |
+| Transformer | encoder=4, decoder=8 | 0.6393 | 0.4091 | 0.2521 | 0.1560 | 0.2268 | 0.4873  | 0.4920 |
+
 
 ## How to use
 
