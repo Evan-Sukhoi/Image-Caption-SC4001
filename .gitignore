@@ -23,10 +23,5 @@ __pycache__/
 *.err
 *.sh
 
-# readme
-README.md
-LICENSE
-/img
-
 # debug 
 models.py

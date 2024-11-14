@@ -125,7 +125,7 @@ class RNN_LSTM_DecoderWithAttention(nn.Module):
 
         if attn_type == "adaptive":
             self.adaptive_attention = Adaptive_Attention(self.encoder_dim, decoder_dim, attention_dim)  # attention network
-            self.decode_step_adaptive = nn.LSTMCell(2 * embed_dim, decoder_dim, bias=True)  # decoding LSTMCell
+            self.lstm_adaptive = nn.LSTMCell(2 * embed_dim, decoder_dim, bias=True)  # decoding LSTMCell
             self.affine_embed = nn.Linear(embed_dim, decoder_dim)  # linear layer to transform embeddings
             self.affine_decoder = nn.Linear(decoder_dim, decoder_dim)  # linear layer to transform decoder's output
             self.fc_encoder = nn.Linear(self.encoder_dim, vocab_size)  # linear layer to find scores over vocabulary
@@ -233,18 +233,12 @@ class RNN_LSTM_DecoderWithAttention(nn.Module):
             
             if self.attn_type == "adaptive":
                 g_t = self.sigmoid(self.affine_embed(self.dropout(embeddings[:batch_size_t, t, :]))
-                                   + self.affine_decoder(self.dropout(h[:batch_size_t])))    # (batch_size_t, decoder_dim)
+                                    + self.affine_decoder(self.dropout(h[:batch_size_t])))    # (batch_size_t, decoder_dim)
 
-                # s_t = g_t * tanh(c_t)
-                # s_t = g_t * torch.tanh(c[:batch_size_t])   # (batch_size_t, decoder_dim)
+                h, c = self.lstm_adaptive(torch.cat([embeddings[:batch_size_t, t, :], v_g[:batch_size_t, :]], dim=1),
+                                        (h[:batch_size_t], c[:batch_size_t]))  # (batch_size_t, decoder_dim)
 
-                h, c = self.decode_step_adaptive(
-                    torch.cat([embeddings[:batch_size_t, t, :], v_g[:batch_size_t, :]], dim=1),
-                               (h[:batch_size_t], c[:batch_size_t]))  # (batch_size_t, decoder_dim)
-                
-                
                 s_t = g_t * torch.tanh(c[:batch_size_t])   # (batch_size_t, decoder_dim)
-                
                 attention_weighted_encoding, alpha = self.adaptive_attention(encoder_out[:batch_size_t], h[:batch_size_t], s_t)
 
                 preds = self.fc(self.dropout(h)) + self.fc_encoder(self.dropout(attention_weighted_encoding))
