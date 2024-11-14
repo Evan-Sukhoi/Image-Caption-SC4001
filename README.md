@@ -1,6 +1,6 @@
 # Image Caption with CNN+RNN/LSTM/Tranformer
 ![GitHub repo size](https://img.shields.io/github/repo-size/Evan-Sukhoi/Image-Caption-SC4001)
-![GitHub](https://img.shields.io/github/license/Evan-Sukhoi/Image-Caption-SC4001)
+![GitHub](https://img.shields.io/github/license/Evan-Sukhoi/Image-Caption-SC4001?cache=no)
 
 > This is the final project of *Neural Network & Deep Learning* course (SC4001), NTU.  We evaluated the RNN, LSTM, and Transformer decoders under a consistent configuration and experimented with various hyperparameter adjustments to enhance results. In particular, we integrated the adaptive attention mechanism into our framework as an advanced technique. Lastly, we visualized the caption-generation process to demonstrate the impact of attention mechanisms and conducted comprehensive automatic evaluations across the models.
 
